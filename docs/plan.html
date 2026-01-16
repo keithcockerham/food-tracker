@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Day Planner Sandbox</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" href="/favicon-32.ico" sizes="32x32">
+  <link rel="icon" type="image/png" href="/favicon-16.ico" sizes="16x16">
+</head>
+<body>
+  <header>
+    <h1>Day Planner</h1>
+    <div class="topbar-right">
+      <a href="index.html" style="color: #ffffff; text-decoration: none">Home &nbsp</a>
+      <a href="add.html" style="color: #ffffff; text-decoration: none">&nbsp Add &nbsp</a>
+      <a href="track.html" style="color: #ffffff; text-decoration: none">&nbsp Track &nbsp</a>
+      <a href="results.html" style="color: #ffffff; text-decoration: none">&nbsp Results &nbsp</a>
+      <a href="plan_bot.html" style="color: #ffffff; text-decoration: none">&nbsp Planning Assistant &nbsp</a>
+      <a href="reports.html" style="color: #ffffff; text-decoration: none">&nbsp Reporting</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Add All Items for the Day</h2>
+
+      <label>Label (optional)
+        <input type="text" id="planName" placeholder="e.g. Egg Muffin Breakfast">
+      </label>
+
+      <label>Servings for this meal/snack
+        <input type="number" id="planServings" value="1" min="0.25" step="0.25">
+      </label>
+
+      <h3>Items (ingredients + recipes)</h3>
+      <div id="planIngredients"></div>
+
+      <button id="btnAddRow">Add Item Row</button>
+      <button id="btnClear" style="margin-left:8px;">Clear All</button>
+
+      <h3 style="margin-top:16px;">Auto-fit Servings to Targets</h3>
+      <div class="grid-2">
+        <label>Target calories per serving
+          <input type="number" id="targetCalPer" placeholder="e.g. 400">
+        </label>
+        <label>Target protein per serving (g)
+          <input type="number" id="targetProtPer" placeholder="e.g. 35">
+        </label>
+      </div>
+      <button id="btnAutoFit">Auto-fit servings</button>
+
+      <div id="planStatus" class="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>Nutrition Summary</h2>
+
+      <div id="summaryEmpty">
+        Add ingredients to see totals for this mock meal/snack.
+      </div>
+
+      <div id="summaryContent" class="hidden">
+        <h3>Total for whole meal</h3>
+        <div class="grid-2">
+          <div>
+            <strong>Calories:</strong> <span id="totalCalories">0</span> kcal<br>
+            <strong>Protein:</strong> <span id="totalProtein">0</span> g<br>
+            <strong>Carbs:</strong> <span id="totalCarbs">0</span> g<br>
+            <strong>Fat:</strong> <span id="totalFat">0</span> g<br>
+          </div>
+          <div>
+            <strong>Fiber:</strong> <span id="totalFiber">0</span> g<br>
+            <strong>Sugar:</strong> <span id="totalSugar">0</span> g<br>
+            <strong>Sodium:</strong> <span id="totalSodium">0</span> mg<br>
+          </div>
+        </div>
+
+        <h3>Per serving</h3>
+        <div class="grid-2">
+          <div>
+            <strong>Calories:</strong> <span id="perCal">0</span> kcal<br>
+            <strong>Protein:</strong> <span id="perProt">0</span> g<br>
+            <strong>Carbs:</strong> <span id="perCarb">0</span> g<br>
+            <strong>Fat:</strong> <span id="perFat">0</span> g<br>
+          </div>
+          <div>
+            <strong>Fiber:</strong> <span id="perFiber">0</span> g<br>
+            <strong>Sugar:</strong> <span id="perSugar">0</span> g<br>
+            <strong>Sodium:</strong> <span id="perSodium">0</span> mg<br>
+          </div>
+        </div>
+
+        <h3>Per serving vs daily targets</h3>
+        <p id="targetsUsedText" style="font-size:13px;">
+          Targets (per day) used: <span class="muted">loading…</span>
+        </p>
+        <div class="grid-2">
+          <div>
+            <strong>Calories:</strong> <span id="pctCal">0</span>% of daily target<br>
+            <strong>Protein:</strong> <span id="pctProt">0</span>% of daily target<br>
+          </div>
+          <div>
+            <strong>Carbs:</strong> <span id="pctCarb">0</span>% of daily target<br>
+            <strong>Fat:</strong> <span id="pctFat">0</span>% of daily target<br>
+          </div>
+        </div>
+
+        <h3>Helper Suggestions</h3>
+        <div id="helperSuggestions" style="font-size:13px; margin-bottom:8px;">
+        </div>
+
+        <h3>Substitution Ideas</h3>
+        <div id="substitutionSuggestions" style="font-size:13px;">
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    async function fetchJson(url, options = {}) {
+      const res = await fetch(url, {
+        headers: { "Content-Type": "application/json" },
+        ...options
+      });
+      return res.json();
+    }
+
+    let GOAL = {
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      fiber: 0,
+      sodium: 0
+    };
+    function updateTargetsUsedText() {
+      const el = document.getElementById("targetsUsedText");
+      if (!el) return;
+
+      const fmt = n =>
+        Number.isFinite(Number(n)) ? Math.round(n).toLocaleString() : "0";
+
+      el.textContent =
+        `Targets (per day) used: ${fmt(GOAL.calories)} kcal, ` +
+        `${fmt(GOAL.protein)} g protein, ` +
+        `${fmt(GOAL.carbs)} g carbs, ` +
+        `${fmt(GOAL.fat)} g fat, ` +
+        `${fmt(GOAL.fiber)} g fiber, ` +
+        `${fmt(GOAL.sodium)} mg sodium.`;
+    }
+
+    async function loadGOAL() {
+      const urls = ["/api/metrics", "/data/metrics.json"];
+
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, { cache: "no-store" });
+          if (!res.ok) continue;
+          const data = await res.json();
+
+          const t = data?.targets ?? data ?? {};
+          GOAL = {
+            calories: Number(t.calories ?? 0),
+            protein: Number(t.protein_g ?? t.protein ?? 0),
+            carbs: Number(t.carbs_g ?? t.carbs ?? 0),
+            fat: Number(t.fat_g ?? t.fat ?? 0),
+            fiber: Number(t.fiber_g ?? t.fiber ?? 0),
+            sodium: Number(t.sodium_mg ?? t.sodium ?? 0),
+          };
+
+          return GOAL;
+        } catch (e) {
+        }
+      }
+
+      return GOAL;
+    }
+
+    let allIngredients = [];
+    let allRecipes = [];
+
+    async function loadData() {
+      allIngredients = await fetchJson("/api/ingredients");
+      allIngredients.sort((a, b) => a.name.localeCompare(b.name));
+
+      allRecipes = await fetchJson("/api/recipes");
+      allRecipes.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    function createItemRow() {
+      const container = document.getElementById("planIngredients");
+      const row = document.createElement("div");
+      row.className = "ingredient-row";
+
+      const typeSel = document.createElement("select");
+      typeSel.className = "item-type";
+      typeSel.innerHTML = `
+        <option value="ingredient">Ingredient</option>
+        <option value="recipe">Recipe</option>
+      `;
+
+      const itemSel = document.createElement("select");
+      const qtyInput = document.createElement("input");
+      const unitInput = document.createElement("input");
+      const removeBtn = document.createElement("button");
+
+      function populateItems() {
+        const t = typeSel.value;
+        itemSel.innerHTML = "";
+        const list = (t === "recipe") ? allRecipes : allIngredients;
+
+        list.forEach(item => {
+          const opt = document.createElement("option");
+          opt.value = (t === "recipe") ? item.recipe_id : item.ingredient_id;
+          opt.textContent = item.name;
+          itemSel.appendChild(opt);
+        });
+      }
+
+      function refreshUnit() {
+        const t = typeSel.value;
+        if (t === "recipe") {
+          unitInput.value = "serving";
+          return;
+        }
+        const ing = allIngredients.find(i => i.ingredient_id === itemSel.value);
+        unitInput.value = (ing && ing.base_unit) ? ing.base_unit : "";
+      }
+
+      qtyInput.type = "number";
+      qtyInput.placeholder = "Qty";
+      qtyInput.step = "0.1";
+      qtyInput.value = "";
+
+      unitInput.type = "text";
+      unitInput.placeholder = "Unit";
+
+      removeBtn.textContent = "✕";
+      removeBtn.style.padding = "0 8px";
+      removeBtn.onclick = () => {
+        row.remove();
+        recalcSummary();
+      };
+
+      typeSel.onchange = () => {
+        populateItems();
+        refreshUnit();
+        recalcSummary();
+      };
+
+      itemSel.onchange = () => {
+        refreshUnit();
+        recalcSummary();
+      };
+
+      qtyInput.oninput = recalcSummary;
+      unitInput.oninput = recalcSummary;
+
+      row.appendChild(typeSel);
+      row.appendChild(itemSel);
+      row.appendChild(qtyInput);
+      row.appendChild(unitInput);
+      row.appendChild(removeBtn);
+
+      container.appendChild(row);
+
+      populateItems();
+      refreshUnit();
+      recalcSummary();
+
+      return row;
+    }
+
+function recalcSummary() {
+      const rows = document.querySelectorAll("#planIngredients .ingredient-row");
+      const servings = parseFloat(document.getElementById("planServings").value || "1");
+
+      let totals = {
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+        fiber: 0,
+        sugar: 0,
+        sodium: 0
+      };
+
+      const contributions = [];
+
+      rows.forEach(row => {
+        const typeSel = row.querySelector("select.item-type");
+        const selects = row.querySelectorAll("select");
+        const inputs = row.querySelectorAll("input");
+
+        const t = typeSel ? typeSel.value : "ingredient";
+        const itemSel = selects.length >= 2 ? selects[1] : selects[0];
+
+        const qtyInput = inputs[0];
+
+        const itemId = itemSel ? itemSel.value : "";
+        const qty = parseFloat(qtyInput?.value || "0");
+        if (!itemId || !qty || qty <= 0) return;
+
+        if (t === "recipe") {
+          const rec = allRecipes.find(r => r.recipe_id === itemId);
+          if (!rec) return;
+
+          let ingList = [];
+          try { ingList = JSON.parse(rec.ingredients || "[]") || []; }
+          catch (e) { ingList = []; }
+
+          const servingsPerBatch = parseFloat(rec.servings_per_batch || 1) || 1;
+
+          const batch = { calories:0, protein:0, carbs:0, fat:0, fiber:0, sugar:0, sodium:0 };
+
+          ingList.forEach(item => {
+            const ingId = item.ingredient_id;
+            const ingQty = parseFloat(item.qty || 0) || 0;
+            if (!ingId || !ingQty) return;
+
+            const ing = allIngredients.find(i => i.ingredient_id === ingId);
+            if (!ing) return;
+
+            const baseAmt = parseFloat(ing.base_amount || 1) || 1;
+            const f = ingQty / baseAmt;
+
+            batch.calories += f * (ing.calories || 0);
+            batch.protein  += f * (ing.protein || 0);
+            batch.carbs    += f * (ing.carbs || 0);
+            batch.fat      += f * (ing.fat || 0);
+            batch.fiber    += f * (ing.fiber || 0);
+            batch.sugar    += f * (ing.sugar || 0);
+            batch.sodium   += f * (ing.sodium || 0);
+          });
+
+          const factor = qty / servingsPerBatch;
+
+          totals.calories += factor * batch.calories;
+          totals.protein  += factor * batch.protein;
+          totals.carbs    += factor * batch.carbs;
+          totals.fat      += factor * batch.fat;
+          totals.fiber    += factor * batch.fiber;
+          totals.sugar    += factor * batch.sugar;
+          totals.sodium   += factor * batch.sodium;
+
+          contributions.push({
+            name: rec.name,
+            calories: factor * batch.calories,
+            protein: factor * batch.protein,
+            carbs: factor * batch.carbs,
+            fat: factor * batch.fat
+          });
+        } else {
+          const ing = allIngredients.find(i => i.ingredient_id === itemId);
+          if (!ing) return;
+
+          const baseAmt = parseFloat(ing.base_amount || 1) || 1;
+          const factor = qty / baseAmt;
+
+          const cals = factor * (ing.calories || 0);
+          const prot = factor * (ing.protein || 0);
+          const carbs = factor * (ing.carbs || 0);
+          const fat = factor * (ing.fat || 0);
+          const fiber = factor * (ing.fiber || 0);
+          const sugar = factor * (ing.sugar || 0);
+          const sodium = factor * (ing.sodium || 0);
+
+          totals.calories += cals;
+          totals.protein  += prot;
+          totals.carbs    += carbs;
+          totals.fat      += fat;
+          totals.fiber    += fiber;
+          totals.sugar    += sugar;
+          totals.sodium   += sodium;
+
+          contributions.push({ name: ing.name, calories: cals, protein: prot, carbs: carbs, fat: fat });
+        }
+      });
+
+      const hasData =
+        rows.length > 0 &&
+        (totals.calories > 0 || totals.protein > 0 || totals.carbs > 0 || totals.fat > 0);
+
+      const summaryEmpty = document.getElementById("summaryEmpty");
+      const summaryContent = document.getElementById("summaryContent");
+
+      if (!hasData) {
+        summaryEmpty.classList.remove("hidden");
+        summaryContent.classList.add("hidden");
+        document.getElementById("helperSuggestions").innerHTML = "";
+        document.getElementById("substitutionSuggestions").innerHTML = "";
+        return;
+      }
+
+      summaryEmpty.classList.add("hidden");
+      summaryContent.classList.remove("hidden");
+
+      // total
+      document.getElementById("totalCalories").textContent = totals.calories.toFixed(0);
+      document.getElementById("totalProtein").textContent  = totals.protein.toFixed(1);
+      document.getElementById("totalCarbs").textContent    = totals.carbs.toFixed(1);
+      document.getElementById("totalFat").textContent      = totals.fat.toFixed(1);
+      document.getElementById("totalFiber").textContent    = totals.fiber.toFixed(1);
+      document.getElementById("totalSugar").textContent    = totals.sugar.toFixed(1);
+      document.getElementById("totalSodium").textContent   = totals.sodium.toFixed(0);
+
+      const per = {
+        calories: totals.calories / servings,
+        protein:  totals.protein  / servings,
+        carbs:    totals.carbs    / servings,
+        fat:      totals.fat      / servings,
+        fiber:    totals.fiber    / servings,
+        sugar:    totals.sugar    / servings,
+        sodium:   totals.sodium   / servings
+      };
+
+      document.getElementById("perCal").textContent    = per.calories.toFixed(0);
+      document.getElementById("perProt").textContent   = per.protein.toFixed(1);
+      document.getElementById("perCarb").textContent   = per.carbs.toFixed(1);
+      document.getElementById("perFat").textContent    = per.fat.toFixed(1);
+      document.getElementById("perFiber").textContent  = per.fiber.toFixed(1);
+      document.getElementById("perSugar").textContent  = per.sugar.toFixed(1);
+      document.getElementById("perSodium").textContent = per.sodium.toFixed(0);
+
+      // % of daily targets (per serving)
+      document.getElementById("pctCal").textContent  =
+        ((per.calories / GOAL.calories) * 100).toFixed(1);
+      document.getElementById("pctProt").textContent =
+        ((per.protein  / GOAL.protein)  * 100).toFixed(1);
+      document.getElementById("pctCarb").textContent =
+        ((per.carbs    / GOAL.carbs)    * 100).toFixed(1);
+      document.getElementById("pctFat").textContent  =
+        ((per.fat      / GOAL.fat)      * 100).toFixed(1);
+
+      buildHelperSuggestions(per);
+      buildSubstitutionSuggestions(contributions, totals, per);
+    }
+
+    function buildHelperSuggestions(per) {
+      const div = document.getElementById("helperSuggestions");
+      const tips = [];
+
+      if (per.calories > 0) {
+        const pctCal = per.calories / GOAL.calories;
+        if (pctCal < 0.15) {
+          tips.push("Very light meal/snack in calories. Fine if you’re pairing it with other food soon.");
+        } else if (pctCal > 0.4 && pctCal <= 0.6) {
+          tips.push("This is a substantial meal in calories. Good candidate for a main meal.");
+        } else if (pctCal > 0.6) {
+          tips.push("This single serving is a large chunk of daily calories. Consider shrinking portions or increasing servings count.");
+        }
+      }
+
+      const pctProt = per.protein / GOAL.protein;
+      if (per.protein < 15) {
+        tips.push("Protein is very low. For fat-loss with training, aim for at least 25–30g per feeding.");
+      } else if (pctProt < 0.1) {
+        tips.push("Protein is modest relative to your daily target; may not be ideal as a primary meal.");
+      } else if (pctProt >= 0.2 && pctProt <= 0.35) {
+        tips.push("Protein is in a good range for a meal at your goals.");
+      } else if (pctProt > 0.4) {
+        tips.push("Very protein-heavy serving. Good for muscle retention, just watch total calories.");
+      }
+
+      const pctCarb = per.carbs / GOAL.carbs;
+      if (pctCarb > 0.5 && per.protein < 25) {
+        tips.push("Carbs dominate and protein is low. Consider shifting some carbs to lean protein sources.");
+      } else if (pctCarb < 0.1 && per.protein >= 25) {
+        tips.push("Low-carb, high-protein profile. Good if you’re keeping carbs tight.");
+      }
+
+      
+      const pctFat = per.fat / GOAL.fat;
+      if (pctFat > 0.5) {
+        tips.push("Fat is a big share of this meal. Check if it’s mostly coming from oils, cheese, or nuts.");
+      } else if (pctFat < 0.15 && per.calories > 0 && per.protein >= 25) {
+        tips.push("Very low fat. Fine if the rest of your day covers essential fats.");
+      }
+
+      if (!tips.length) {
+        div.innerHTML = "No major red flags. This looks reasonably balanced for your current targets.";
+      } else {
+        div.innerHTML = "<ul>" + tips.map(t => `<li>${t}</li>`).join("") + "</ul>";
+      }
+    }
+
+    function buildSubstitutionSuggestions(contributions, totals, per) {
+      const div = document.getElementById("substitutionSuggestions");
+
+      if (!contributions.length || totals.calories <= 0) {
+        div.innerHTML = "";
+        return;
+      }
+
+      const sorted = [...contributions].sort((a, b) => b.calories - a.calories);
+      const top = sorted.slice(0, 3);
+
+      const lines = [];
+
+      top.forEach(item => {
+        const share = (item.calories / totals.calories) * 100;
+        const carbShare = item.carbs * 4 / (item.calories || 1);
+        const fatShare = item.fat * 9 / (item.calories || 1);
+
+        const name = item.name;
+
+        if (share < 0.15) return; 
+
+        if (carbShare > 0.5 && item.protein < 10) {
+  
+          lines.push(
+            `${name} provides about ${share.toFixed(0)}% of this meal’s calories, mostly from carbs. ` +
+            `You could reduce its portion, or swap part of it for lower-carb options like cauliflower rice, extra non-starchy vegetables, or zucchini “noodles”.`
+          );
+        } else if (fatShare > 0.5 && item.protein < 10) {
+          lines.push(
+            `${name} is a major calorie source, driven by fats. Consider trimming added oils, using leaner cuts, or swapping some of it for lean protein or vegetables.`
+          );
+        } else if (item.protein < 5 && share > 0.25) {
+          lines.push(
+            `${name} adds a lot of calories without much protein. If you want this meal more protein-forward, reduce ${name} slightly and increase a lean protein ingredient.`
+          );
+        }
+      });
+
+      if (!lines.length) {
+        if (per.protein >= 25 && per.calories <= GOAL.calories * 0.5) {
+          div.innerHTML = "Nothing obvious to swap out: protein is solid and calories are reasonable.";
+        } else {
+          div.innerHTML = "Any large-calorie ingredient can be reduced a bit and replaced with lean protein or vegetables to improve the macro profile.";
+        }
+        return;
+      }
+
+      div.innerHTML = "<ul>" + lines.map(t => `<li>${t}</li>`).join("") + "</ul>";
+    }
+
+    function autoFitServings() {
+      const targetCal = parseFloat(document.getElementById("targetCalPer").value || "0");
+      const targetProt = parseFloat(document.getElementById("targetProtPer").value || "0");
+
+      const totalCal = parseFloat(document.getElementById("totalCalories").textContent || "0");
+      const totalProt = parseFloat(document.getElementById("totalProtein").textContent || "0");
+
+      if (!totalCal && !totalProt) {
+        document.getElementById("planStatus").textContent = "Add ingredients before auto-fitting servings.";
+        return;
+      }
+
+      let servingsByCal = null;
+      let servingsByProt = null;
+
+      if (targetCal > 0 && totalCal > 0) {
+        servingsByCal = totalCal / targetCal;
+      }
+      if (targetProt > 0 && totalProt > 0) {
+        servingsByProt = totalProt / targetProt;
+      }
+
+      let chosen = null;
+      let basis = "";
+
+      if (servingsByCal && servingsByProt) {
+        chosen = servingsByProt;
+        basis = "protein";
+      } else if (servingsByProt) {
+        chosen = servingsByProt;
+        basis = "protein";
+      } else if (servingsByCal) {
+        chosen = servingsByCal;
+        basis = "calories";
+      } else {
+        document.getElementById("planStatus").textContent =
+          "Could not compute servings from the targets provided.";
+        return;
+      }
+
+      if (!isFinite(chosen) || chosen <= 0) {
+        document.getElementById("planStatus").textContent =
+          "Invalid target combination for this recipe.";
+        return;
+      }
+
+      const rounded = Math.max(0.25, Math.round(chosen * 4) / 4);
+      document.getElementById("planServings").value = rounded.toString();
+      recalcSummary();
+
+      document.getElementById("planStatus").textContent =
+        `Servings auto-fit to ~${rounded} based on ${basis}.`;
+    }
+
+    document.getElementById("btnAddRow").onclick = () => {
+      if (!allIngredients.length && !allRecipes.length) {
+        document.getElementById("planStatus").textContent = "No ingredients loaded yet.";
+        return;
+      }
+      createItemRow();
+      recalcSummary();
+    };
+
+    document.getElementById("btnClear").onclick = () => {
+      document.getElementById("planIngredients").innerHTML = "";
+      recalcSummary();
+    };
+
+    document.getElementById("planServings").oninput = recalcSummary;
+    document.getElementById("btnAutoFit").onclick = autoFitServings;
+
+    (async function init() {
+      await loadData();
+      await loadGOAL();
+      updateTargetsUsedText();   
+      
+      if (allIngredients.length) {
+        createItemRow();
+      } else {
+        document.getElementById("planStatus").textContent =
+          "No ingredients defined yet. Add some on the Add page.";
+      }
+      recalcSummary();
+    })();
+  </script>
+</body>
+</html>

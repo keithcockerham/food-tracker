@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Day Planner Sandbox</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" href="/favicon-32.ico" sizes="32x32">
+  <link rel="icon" type="image/png" href="/favicon-16.ico" sizes="16x16">
+<style>
+
+/* Meal Genie loading indicator */
+.genie-status{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  margin-left:10px;
+  font-size:12px;
+  color:#666;
+  user-select:none;
+}
+.genie-status .spinner{
+  width:14px;
+  height:14px;
+  border:2px solid rgba(0,0,0,0.15);
+  border-top-color: rgba(0,0,0,0.55);
+  border-radius:50%;
+  animation:spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.day-card,.shop-card{
+  border:1px solid rgba(0,0,0,0.08);
+  border-radius:12px;
+  padding:10px 12px;
+  margin:10px 0;
+  background:#fff;
+}
+.day-card h4,.shop-card h4{margin:0 0 8px 0; font-size:13px;}
+.kv{margin:6px 0; font-size:12.5px; line-height:1.35;}
+.bullets{margin:6px 0 0 18px; padding:0;}
+.muted{color:#777; font-size:12px;}
+.mono{white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:12px;}
+
+
+.sub-card{
+  border:1px solid rgba(0,0,0,0.08);
+  border-radius:10px;
+  padding:8px 10px;
+  margin:6px 0;
+  background:#fff;
+  font-size:12.5px;
+}
+.sub-main{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-weight:600;
+}
+.sub-from{ color:#444; }
+.sub-arrow{ color:#999; }
+.sub-to{ color:#1a7f37; }
+.sub-reason{
+  margin-top:4px;
+  font-size:12px;
+  color:#666;
+}
+
+.assistant-log{display:flex; flex-direction:column; gap:8px;}
+.chat-msg{display:flex; flex-direction:column; max-width:100%;}
+.chat-msg.you{align-items:flex-end;}
+.chat-msg.assistant{align-items:flex-start;}
+.chat-role{font-size:11px; color:#777; margin:0 6px 2px;}
+.chat-bubble{
+  max-width:85%;
+  border:1px solid rgba(0,0,0,0.08);
+  border-radius:14px;
+  padding:8px 10px;
+  background:#fff;
+  font-size:12.5px;
+  line-height:1.35;
+  white-space:normal;
+}
+.chat-msg.you .chat-bubble{background:rgba(26,127,55,0.06);}
+.chat-bubble p{margin:0 0 6px 0;}
+.chat-bubble p:last-child{margin-bottom:0;}
+.chat-bubble ul{margin:6px 0 0 18px; padding:0;}
+.chat-bubble li{margin:2px 0;}
+
+
+#helperSuggestions ul{
+  margin:6px 0 0 18px;
+  padding:0;
+  list-style:disc;
+}
+#helperSuggestions li{ margin:2px 0; }
+
+</style>
+</head>
+<body>
+  <header>
+    <h1>Day Planner</h1>
+    <div class="topbar-right">
+      <a href="index.html" style="color: #ffffff; text-decoration: none">Home &nbsp</a>
+      <a href="add.html" style="color: #ffffff; text-decoration: none">&nbsp Add &nbsp</a>
+      <a href="track.html" style="color: #ffffff; text-decoration: none">&nbsp Track &nbsp</a>
+      <a href="results.html" style="color: #ffffff; text-decoration: none">&nbsp Results &nbsp</a>
+      <a href="plan.html" style="color: #ffffff; text-decoration: none">&nbsp Day Planner &nbsp</a>
+      <a href="reports.html" style="color: #ffffff; text-decoration: none">&nbsp Reporting</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Add All Items for the Day</h2>
+
+      <label>Day label (optional)
+        <input type="text" id="planName" placeholder="e.g. Monday plan">
+      </label>
+
+      <label>Days in this plan (1 = today; >1 = batch prep)
+        <input type="number" id="planServings" value="1" min="0.25" step="0.25">
+      </label>
+
+      <h3>Items (ingredients + recipes)</h3>
+      <div id="planIngredients"></div>
+
+      <button id="btnAddRow">Add Item Row</button>
+      <button id="btnClear" style="margin-left:8px;">Clear All</button>
+
+      <h3 style="margin-top:16px;">Auto-fit Days to Targets (batch prep helper)</h3>
+      <div class="grid-2">
+        <label>Target calories per day
+          <input type="number" id="targetCalPer" placeholder="e.g. 400">
+        </label>
+        <label>Target protein per day (g)
+          <input type="number" id="targetProtPer" placeholder="e.g. 35">
+        </label>
+      </div>
+      <button id="btnAutoFit">Auto-fit days</button>
+
+      <div id="planStatus" class="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>Nutrition Summary</h2>
+
+      <div id="summaryEmpty">
+        Add items to see totals for this day plan.
+      </div>
+
+      <div id="summaryContent" class="hidden">
+        <h3>Total for all days</h3>
+        <div class="grid-2">
+          <div>
+            <strong>Calories:</strong> <span id="totalCalories">0</span> kcal<br>
+            <strong>Protein:</strong> <span id="totalProtein">0</span> g<br>
+            <strong>Carbs:</strong> <span id="totalCarbs">0</span> g<br>
+            <strong>Fat:</strong> <span id="totalFat">0</span> g<br>
+          </div>
+          <div>
+            <strong>Fiber:</strong> <span id="totalFiber">0</span> g<br>
+            <strong>Sugar:</strong> <span id="totalSugar">0</span> g<br>
+            <strong>Sodium:</strong> <span id="totalSodium">0</span> mg<br>
+          </div>
+        </div>
+
+        <h3>Per day</h3>
+        <div class="grid-2">
+          <div>
+            <strong>Calories:</strong> <span id="perCal">0</span> kcal<br>
+            <strong>Protein:</strong> <span id="perProt">0</span> g<br>
+            <strong>Carbs:</strong> <span id="perCarb">0</span> g<br>
+            <strong>Fat:</strong> <span id="perFat">0</span> g<br>
+          </div>
+          <div>
+            <strong>Fiber:</strong> <span id="perFiber">0</span> g<br>
+            <strong>Sugar:</strong> <span id="perSugar">0</span> g<br>
+            <strong>Sodium:</strong> <span id="perSodium">0</span> mg<br>
+          </div>
+        </div>
+
+        <h3>Per day vs daily targets</h3>
+        <p id="targetsUsedText" style="font-size:13px;">
+          Targets (per day) used: <span class="muted">loading…</span>
+        </p>
+        <div class="grid-2">
+          <div>
+            <strong>Calories:</strong> <span id="pctCal">0</span>% of daily target<br>
+            <strong>Protein:</strong> <span id="pctProt">0</span>% of daily target<br>
+          </div>
+          <div>
+            <strong>Carbs:</strong> <span id="pctCarb">0</span>% of daily target<br>
+            <strong>Fat:</strong> <span id="pctFat">0</span>% of daily target<br>
+          </div>
+        </div>
+
+        <h3>Helper Suggestions</h3>
+        <div id="helperSuggestions" style="font-size:13px; margin-bottom:8px;">
+        </div>
+
+        <h3>Substitution Ideas</h3>
+        <div id="substitutionSuggestions" style="font-size:13px;">
+        </div>
+      </div>
+    </section>
+  
+    <section class="card">
+      <h2>Assistant</h2>
+      <p class="muted">Ask for smarter suggestions/substitutions based on your current day plan. (Key stays server-side.)</p>
+      <div class="assistant">
+        <div id="assistantLog" class="assistant-log" aria-live="polite"></div>
+        <div class="assistant-controls">
+          <input id="assistantInput" type="text" placeholder="e.g., How can I raise protein without adding much sodium?" />
+          <button class="btn" id="btnAssistantSend">Send</button>
+        </div>
+        <div class="assistant-actions">
+          <button class="btn small" id="btnGenHelpers">Generate helper suggestions</button>
+          <button class="btn small" id="btnGenSubs">Generate substitution ideas</button>
+        </div>
+        <div class="notice small">Requires backend endpoints: <code>/api/llm</code> and <code>/api/meal_genie</code>.</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Meal Genie</h2>
+      <p class="muted">Generate a random 3-day menu (breakfast, lunch, dinner, 2 snacks) that aims to meet your daily targets and any positive requirements you type in.</p>
+
+      <div class="genie">
+        <label class="lbl">Positive requirements (optional)</label>
+        <textarea id="genieReq" rows="3" placeholder="Examples: high protein, low sodium, lots of fiber, no tofu, budget-friendly, minimal cooking, repeats allowed"></textarea>
+
+        <div class="row">
+          <button class="btn" id="btnMealGenie">Make 3-Day Menu</button>
+          <span id="mealGenieStatus" class="genie-status" aria-live="polite"></span>
+          <button class="btn ghost" id="btnMealGenieAddToPlan" disabled title="Adds Day 1 items into your current plan (if your backend returns ingredient-level items).">Add Day 1 to plan</button>
+        </div>
+
+        <div id="genieOut" class="genie-out hidden">
+          <div id="genieMeta" class="chiprow"></div>
+          <h3 style="margin:6px 0 4px;">3-Day Menu</h3>
+          <div id="mealGenieMenu"></div>
+          <h3 style="margin:10px 0 4px;">Shopping List</h3>
+          <div id="mealGenieShopping"></div>
+        </div>
+      </div>
+    </section>
+
+</main>
+
+  <script>
+    
+    window.renderHelperSuggestions = function(text){
+      const el = document.getElementById("helperSuggestions");
+      if(!el) return;
+      const raw = String(text ?? "").trim();
+      if(!raw){ el.innerHTML = ""; return; }
+      el.innerHTML = formatChatText(raw);
+    };
+    
+    function updateTargetsUsedText() {
+      const el = document.getElementById("targetsUsedText");
+      if (!el) return;
+
+      const fmt = n =>
+        Number.isFinite(Number(n)) ? Math.round(n).toLocaleString() : "0";
+
+      el.textContent =
+        `Targets (per day) used: ${fmt(GOAL.calories)} kcal, ` +
+        `${fmt(GOAL.protein)} g protein, ` +
+        `${fmt(GOAL.carbs)} g carbs, ` +
+        `${fmt(GOAL.fat)} g fat, ` +
+        `${fmt(GOAL.fiber)} g fiber, ` +
+        `${fmt(GOAL.sodium)} mg sodium.`;
+    }
+
+    window.scheduleLLM = function(task, userText, contextObj, targetElId) {
+      const key = String(targetElId || "");
+      window.__llmTimers = window.__llmTimers || {};
+      if (window.__llmTimers[key]) clearTimeout(window.__llmTimers[key]);
+
+      const el = targetElId ? document.getElementById(targetElId) : null;
+
+      if (targetElId === "substitutionSuggestions" && typeof renderSubstitutionIdeas === "function") {
+        renderSubstitutionIdeas("Thinking…");
+      } else if (targetElId === "helperSuggestions" && typeof window.renderHelperSuggestions === "function") {
+        window.renderHelperSuggestions("Thinking…");
+      } else if (el) {
+        el.textContent = "Thinking…";
+      }
+
+      window.__llmTimers[key] = setTimeout(async () => {
+        try {
+          const txt = await callLLM(task, userText, contextObj);
+
+          if (targetElId === "substitutionSuggestions" && typeof renderSubstitutionIdeas === "function") {
+            renderSubstitutionIdeas(txt);
+          } else if (targetElId === "helperSuggestions" && typeof window.renderHelperSuggestions === "function") {
+            window.renderHelperSuggestions(txt);
+          } else if (el) {
+            el.textContent = txt;
+          }
+        } catch (e) {
+          const msg = "LLM error: " + String(e);
+
+          if (targetElId === "substitutionSuggestions" && typeof renderSubstitutionIdeas === "function") {
+            renderSubstitutionIdeas(msg);
+          } else if (targetElId === "helperSuggestions" && typeof window.renderHelperSuggestions === "function") {
+            window.renderHelperSuggestions(msg);
+          } else if (el) {
+            el.textContent = msg;
+          }
+        }
+      }, 250);
+    };
+
+    async function fetchJson(url, options = {}) {
+      const res = await fetch(url, {
+        headers: { "Content-Type": "application/json" },
+        ...options
+      });
+      return res.json();
+    }
+
+    let GOAL = {
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      fiber: 0,
+      sodium: 0
+    };
+    function updateTargetsUsedText() {
+      const el = document.getElementById("targetsUsedText");
+      if (!el) return;
+
+      const fmt = n =>
+        Number.isFinite(Number(n)) ? Math.round(n).toLocaleString() : "0";
+
+      el.textContent =
+        `Targets (per day) used: ${fmt(GOAL.calories)} kcal, ` +
+        `${fmt(GOAL.protein)} g protein, ` +
+        `${fmt(GOAL.carbs)} g carbs, ` +
+        `${fmt(GOAL.fat)} g fat, ` +
+        `${fmt(GOAL.fiber)} g fiber, ` +
+        `${fmt(GOAL.sodium)} mg sodium.`;
+    }
+
+    async function loadGOAL() {
+      const urls = ["/api/metrics", "/data/metrics.json"];
+
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, { cache: "no-store" });
+          if (!res.ok) continue;
+          const data = await res.json();
+
+          const t = data?.targets ?? data ?? {};
+          GOAL = {
+            calories: Number(t.calories ?? 0),
+            protein: Number(t.protein_g ?? t.protein ?? 0),
+            carbs: Number(t.carbs_g ?? t.carbs ?? 0),
+            fat: Number(t.fat_g ?? t.fat ?? 0),
+            fiber: Number(t.fiber_g ?? t.fiber ?? 0),
+            sodium: Number(t.sodium_mg ?? t.sodium ?? 0),
+          };
+
+          return GOAL;
+        } catch (e) {
+        }
+      }
+      return GOAL;
+    }
+
+    let allIngredients = [];
+    let allRecipes = [];
+
+    async function loadData() {
+      allIngredients = await fetchJson("/api/ingredients");
+      allIngredients.sort((a, b) => a.name.localeCompare(b.name));
+
+      allRecipes = await fetchJson("/api/recipes");
+      allRecipes.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    function createItemRow() {
+      const container = document.getElementById("planIngredients");
+      const row = document.createElement("div");
+      row.className = "ingredient-row";
+
+      const typeSel = document.createElement("select");
+      typeSel.className = "item-type";
+      typeSel.innerHTML = `
+        <option value="ingredient">Ingredient</option>
+        <option value="recipe">Recipe</option>
+      `;
+
+      const itemSel = document.createElement("select");
+      const qtyInput = document.createElement("input");
+      const unitInput = document.createElement("input");
+      const removeBtn = document.createElement("button");
+
+      function populateItems() {
+        const t = typeSel.value;
+        itemSel.innerHTML = "";
+        const list = (t === "recipe") ? allRecipes : allIngredients;
+
+        list.forEach(item => {
+          const opt = document.createElement("option");
+          opt.value = (t === "recipe") ? item.recipe_id : item.ingredient_id;
+          opt.textContent = item.name;
+          itemSel.appendChild(opt);
+        });
+      }
+
+      function refreshUnit() {
+        const t = typeSel.value;
+        if (t === "recipe") {
+          unitInput.value = "serving";
+          return;
+        }
+        const ing = allIngredients.find(i => i.ingredient_id === itemSel.value);
+        unitInput.value = (ing && ing.base_unit) ? ing.base_unit : "";
+      }
+
+      qtyInput.type = "number";
+      qtyInput.placeholder = "Qty";
+      qtyInput.step = "0.1";
+      qtyInput.value = "";
+
+      unitInput.type = "text";
+      unitInput.placeholder = "Unit";
+
+      removeBtn.textContent = "✕";
+      removeBtn.style.padding = "0 8px";
+      removeBtn.onclick = () => {
+        row.remove();
+        recalcSummary();
+      };
+
+      typeSel.onchange = () => {
+        populateItems();
+        refreshUnit();
+        recalcSummary();
+      };
+
+      itemSel.onchange = () => {
+        refreshUnit();
+        recalcSummary();
+      };
+
+      qtyInput.oninput = recalcSummary;
+      unitInput.oninput = recalcSummary;
+
+      row.appendChild(typeSel);
+      row.appendChild(itemSel);
+      row.appendChild(qtyInput);
+      row.appendChild(unitInput);
+      row.appendChild(removeBtn);
+
+      container.appendChild(row);
+
+      populateItems();
+      refreshUnit();
+      recalcSummary();
+
+      return row;
+    }
+
+    function recalcSummary() {
+      const rows = document.querySelectorAll("#planIngredients .ingredient-row");
+      const days = parseFloat(document.getElementById("planServings").value || "1");
+
+      let totals = {
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+        fiber: 0,
+        sugar: 0,
+        sodium: 0
+      };
+
+      const contributions = [];
+
+      rows.forEach(row => {
+        const typeSel = row.querySelector("select.item-type");
+        const selects = row.querySelectorAll("select");
+        const inputs = row.querySelectorAll("input");
+
+        const t = typeSel ? typeSel.value : "ingredient";
+        const itemSel = selects.length >= 2 ? selects[1] : selects[0];
+
+        const qtyInput = inputs[0];
+
+        const itemId = itemSel ? itemSel.value : "";
+        const qty = parseFloat(qtyInput?.value || "0");
+        if (!itemId || !qty || qty <= 0) return;
+
+        if (t === "recipe") {
+          const rec = allRecipes.find(r => r.recipe_id === itemId);
+          if (!rec) return;
+
+          let ingList = [];
+          try { ingList = JSON.parse(rec.ingredients || "[]") || []; }
+          catch (e) { ingList = []; }
+
+          const servingsPerBatch = parseFloat(rec.servings_per_batch || 1) || 1;
+
+          const batch = { calories:0, protein:0, carbs:0, fat:0, fiber:0, sugar:0, sodium:0 };
+
+          ingList.forEach(item => {
+            const ingId = item.ingredient_id;
+            const ingQty = parseFloat(item.qty || 0) || 0;
+            if (!ingId || !ingQty) return;
+
+            const ing = allIngredients.find(i => i.ingredient_id === ingId);
+            if (!ing) return;
+
+            const baseAmt = parseFloat(ing.base_amount || 1) || 1;
+            const f = ingQty / baseAmt;
+
+            batch.calories += f * (ing.calories || 0);
+            batch.protein  += f * (ing.protein || 0);
+            batch.carbs    += f * (ing.carbs || 0);
+            batch.fat      += f * (ing.fat || 0);
+            batch.fiber    += f * (ing.fiber || 0);
+            batch.sugar    += f * (ing.sugar || 0);
+            batch.sodium   += f * (ing.sodium || 0);
+          });
+
+          const factor = qty / servingsPerBatch;
+
+          const cals = factor * batch.calories;
+          const prot = factor * batch.protein;
+          const carbs = factor * batch.carbs;
+          const fat = factor * batch.fat;
+          const fiber = factor * batch.fiber;
+          const sugar = factor * batch.sugar;
+          const sodium = factor * batch.sodium;
+
+          totals.calories += cals;
+          totals.protein  += prot;
+          totals.carbs    += carbs;
+          totals.fat      += fat;
+          totals.fiber    += fiber;
+          totals.sugar    += sugar;
+          totals.sodium   += sodium;
+
+          contributions.push({
+            name: rec.name,
+            calories: cals,
+            protein: prot,
+            carbs: carbs,
+            fat: fat
+          });
+        } else {
+          const ing = allIngredients.find(i => i.ingredient_id === itemId);
+          if (!ing) return;
+
+          const baseAmount = parseFloat(ing.base_amount || 1);
+          const factor = qty / baseAmount;
+
+          const cals = factor * (ing.calories || 0);
+          const prot = factor * (ing.protein || 0);
+          const carbs = factor * (ing.carbs || 0);
+          const fat = factor * (ing.fat || 0);
+          const fiber = factor * (ing.fiber || 0);
+          const sugar = factor * (ing.sugar || 0);
+          const sodium = factor * (ing.sodium || 0);
+
+          totals.calories += cals;
+          totals.protein  += prot;
+          totals.carbs    += carbs;
+          totals.fat      += fat;
+          totals.fiber    += fiber;
+          totals.sugar    += sugar;
+          totals.sodium   += sodium;
+
+          contributions.push({
+            name: ing.name,
+            calories: cals,
+            protein: prot,
+            carbs: carbs,
+            fat: fat
+          });
+        }
+      });
+
+      const hasData =
+        rows.length > 0 &&
+        (totals.calories > 0 || totals.protein > 0 || totals.carbs > 0 || totals.fat > 0);
+
+      const summaryEmpty = document.getElementById("summaryEmpty");
+      const summaryContent = document.getElementById("summaryContent");
+
+      if (!hasData) {
+        summaryEmpty.classList.remove("hidden");
+        summaryContent.classList.add("hidden");
+        document.getElementById("helperSuggestions").innerHTML = "";
+        renderSubstitutionIdeas("");   
+        return;
+      }
+
+      summaryEmpty.classList.add("hidden");
+      summaryContent.classList.remove("hidden");
+
+      
+      document.getElementById("totalCalories").textContent = totals.calories.toFixed(0);
+      document.getElementById("totalProtein").textContent  = totals.protein.toFixed(1);
+      document.getElementById("totalCarbs").textContent    = totals.carbs.toFixed(1);
+      document.getElementById("totalFat").textContent      = totals.fat.toFixed(1);
+      document.getElementById("totalFiber").textContent    = totals.fiber.toFixed(1);
+      document.getElementById("totalSugar").textContent    = totals.sugar.toFixed(1);
+      document.getElementById("totalSodium").textContent   = totals.sodium.toFixed(0);
+
+      const per = {
+        calories: totals.calories / days,
+        protein:  totals.protein  / days,
+        carbs:    totals.carbs    / days,
+        fat:      totals.fat      / days,
+        fiber:    totals.fiber    / days,
+        sugar:    totals.sugar    / days,
+        sodium:   totals.sodium   / days
+      };
+
+      document.getElementById("perCal").textContent    = per.calories.toFixed(0);
+      document.getElementById("perProt").textContent   = per.protein.toFixed(1);
+      document.getElementById("perCarb").textContent   = per.carbs.toFixed(1);
+      document.getElementById("perFat").textContent    = per.fat.toFixed(1);
+      document.getElementById("perFiber").textContent  = per.fiber.toFixed(1);
+      document.getElementById("perSugar").textContent  = per.sugar.toFixed(1);
+      document.getElementById("perSodium").textContent = per.sodium.toFixed(0);
+
+      document.getElementById("pctCal").textContent  =
+        ((per.calories / GOAL.calories) * 100).toFixed(1);
+      document.getElementById("pctProt").textContent =
+        ((per.protein  / GOAL.protein)  * 100).toFixed(1);
+      document.getElementById("pctCarb").textContent =
+        ((per.carbs    / GOAL.carbs)    * 100).toFixed(1);
+      document.getElementById("pctFat").textContent  =
+        ((per.fat      / GOAL.fat)      * 100).toFixed(1);
+
+      buildHelperSuggestions(per);
+      buildSubstitutionSuggestions(contributions, totals, per);
+    }
+
+    function renderSubstitutionIdeas(text) {
+      const el = document.getElementById("substitutionSuggestions");
+      if (!el) return;
+
+      const raw = (text == null) ? "" : String(text);
+      if (!raw.trim()) {
+        el.innerHTML = "";
+        return;
+      }
+
+      let norm = raw.replace(/\r/g, "");
+      norm = norm.replace(/\s*\n\s*-\s*/g, "\n- ");
+      norm = norm.replace(/\s*\n\s*•\s*/g, "\n- ");
+      norm = norm.replace(/\s+-\s+/g, "\n- ");      
+      norm = norm.replace(/^\s*-\s*/gm, "- ");      
+      norm = norm.replace(/^\s*•\s*/gm, "- ");      
+      norm = norm.replace(/\n{3,}/g, "\n\n").trim();
+
+      let lines = norm.split("\n").map(s => s.trim()).filter(Boolean);
+      const bulletLines = lines.filter(l => l.startsWith("- "));
+      if (bulletLines.length) lines = bulletLines.map(l => l.replace(/^-+\s*/, "").trim());
+
+      const items = lines.map(line => {
+        const arrowMatch = line.match(/(.+?)\s*->\s*(.+?)(?:\s+(?:to|because)\s+|[.]\s*|$)(.*)/i);
+        if (arrowMatch) {
+          return {
+            from: arrowMatch[1].trim(),
+            to: arrowMatch[2].trim(),
+            reason: (arrowMatch[3] || "").trim()
+          };
+        }
+        return { text: line };
+      });
+
+      el.innerHTML = items.map(it => {
+        if (it.from && it.to) {
+          return `
+            <div class="sub-card">
+              <div class="sub-main">
+                <span class="sub-from">${escapeHtml(it.from)}</span>
+                <span class="sub-arrow">→</span>
+                <span class="sub-to">${escapeHtml(it.to)}</span>
+              </div>
+              ${it.reason ? `<div class="sub-reason">${escapeHtml(it.reason)}</div>` : ""}
+            </div>
+          `;
+        }
+        return `<div class="sub-card">${escapeHtml(it.text || "")}</div>`;
+      }).join("");
+    }
+
+    function buildHelperSuggestions(per) {
+      const tips = [];
+
+      if (per.calories > 0) {
+        const pctCal = per.calories / GOAL.calories;
+        if (pctCal < 0.15) {
+          tips.push("Calories are very low for the day plan. If this represents your full day, you’ll likely be under-fueled.");
+        } else if (pctCal > 0.4 && pctCal <= 0.6) {
+          tips.push("Calories are in a solid range for the day plan.");
+        } else if (pctCal > 0.6) {
+          tips.push("Calories are high for the day plan. Consider trimming portions or swapping in lower-calorie items.");
+        }
+      }
+
+      const pctProt = per.protein / GOAL.protein;
+      if (per.protein < 15) {
+        tips.push("Protein is very low for the day plan. For fat-loss with training, you’ll usually want this closer to your daily protein target.");
+      } else if (pctProt < 0.1) {
+        tips.push("Protein is modest relative to your daily target.");
+      } else if (pctProt >= 0.2 && pctProt <= 0.35) {
+        tips.push("Protein is in a good range for the day plan.");
+      } else if (pctProt > 0.4) {
+        tips.push("Very protein-heavy day. Good for muscle retention, just watch total calories.");
+      }
+
+      const pctCarb = per.carbs / GOAL.carbs;
+      if (pctCarb > 0.5 && per.protein < 25) {
+        tips.push("Carbs dominate and protein is low. Consider shifting some carbs toward lean protein sources.");
+      } else if (pctCarb < 0.1 && per.protein >= 25) {
+        tips.push("Low-carb, high-protein day profile. Good if you’re keeping carbs tight.");
+      }
+
+      const pctFat = per.fat / GOAL.fat;
+      if (pctFat > 0.5) {
+        tips.push("Fat is a big share of the day plan. Check if it’s mostly coming from oils, cheese, or nuts.");
+      } else if (pctFat < 0.15 && per.calories > 0 && per.protein >= 25) {
+        tips.push("Very low fat. Fine if the rest of your day covers essential fats.");
+      }
+
+      if (!tips.length) {
+        window.renderHelperSuggestions(
+          "No major red flags. This day plan looks reasonably balanced for your current targets."
+        );
+      } else {
+        const text = tips.map(t => `- ${t}`).join("\n");
+        window.renderHelperSuggestions(text);
+      }
+    }
+
+
+    function buildSubstitutionSuggestions(contributions, totals, per) {
+      const div = document.getElementById("substitutionSuggestions");
+
+      if (!contributions.length || totals.calories <= 0) {
+        div.innerHTML = "";
+        return;
+      }
+
+      const sorted = [...contributions].sort((a, b) => b.calories - a.calories);
+      const top = sorted.slice(0, 3);
+
+      const lines = [];
+
+      top.forEach(item => {
+        const share = (item.calories / totals.calories) * 100;
+        const carbShare = item.carbs * 4 / (item.calories || 1);
+        const fatShare = item.fat * 9 / (item.calories || 1);
+
+        const name = item.name;
+
+        if (share < 0.15) return; 
+
+        if (carbShare > 0.5 && item.protein < 10) {
+          
+          lines.push(
+            `${name} provides about ${share.toFixed(0)}% of this day plan’s calories, mostly from carbs. ` +
+            `You could reduce its portion, or swap part of it for lower-carb options like cauliflower rice, extra non-starchy vegetables, or zucchini “noodles”.`
+          );
+        } else if (fatShare > 0.5 && item.protein < 10) {
+          
+          lines.push(
+            `${name} is a major calorie source, driven by fats. Consider trimming added oils, using leaner cuts, or swapping some of it for lean protein or vegetables.`
+          );
+        } else if (item.protein < 5 && share > 0.25) {
+          
+          lines.push(
+            `${name} adds a lot of calories without much protein. If you want this day plan more protein-forward, reduce ${name} slightly and increase a lean protein ingredient.`
+          );
+        }
+      });
+
+      if (!lines.length) {
+        if (per.protein >= 25 && per.calories <= GOAL.calories * 0.5) {
+          div.innerHTML = "Nothing obvious to swap out: protein is solid and calories are reasonable for the day plan.";
+        } else {
+          div.innerHTML = "Any large-calorie ingredient can be reduced a bit and replaced with lean protein or vegetables to improve the day’s macro profile.";
+        }
+        return;
+      }
+
+      div.innerHTML = "<ul>" + lines.map(t => `<li>${t}</li>`).join("") + "</ul>";
+    }
+
+    function autoFitServings() {
+      const targetCal = parseFloat(document.getElementById("targetCalPer").value || "0");
+      const targetProt = parseFloat(document.getElementById("targetProtPer").value || "0");
+
+      const totalCal = parseFloat(document.getElementById("totalCalories").textContent || "0");
+      const totalProt = parseFloat(document.getElementById("totalProtein").textContent || "0");
+
+      if (!totalCal && !totalProt) {
+        document.getElementById("planStatus").textContent = "Add items before auto-fitting days.";
+        return;
+      }
+
+      let servingsByCal = null;
+      let servingsByProt = null;
+
+      if (targetCal > 0 && totalCal > 0) {
+        servingsByCal = totalCal / targetCal;
+      }
+      if (targetProt > 0 && totalProt > 0) {
+        servingsByProt = totalProt / targetProt;
+      }
+
+      let chosen = null;
+      let basis = "";
+
+      if (servingsByCal && servingsByProt) {
+        
+        chosen = servingsByProt;
+        basis = "protein";
+      } else if (servingsByProt) {
+        chosen = servingsByProt;
+        basis = "protein";
+      } else if (servingsByCal) {
+        chosen = servingsByCal;
+        basis = "calories";
+      } else {
+        document.getElementById("planStatus").textContent =
+          "Could not compute days from the targets provided.";
+        return;
+      }
+
+      
+      if (!isFinite(chosen) || chosen <= 0) {
+        document.getElementById("planStatus").textContent =
+          "Invalid target combination for this recipe.";
+        return;
+      }
+
+      
+      const rounded = Math.max(0.25, Math.round(chosen * 4) / 4);
+      document.getElementById("planServings").value = rounded.toString();
+      recalcSummary();
+
+      document.getElementById("planStatus").textContent =
+        `Days auto-fit to ~${rounded} based on ${basis}.`;
+    }
+
+    document.getElementById("btnAddRow").onclick = () => {
+      if (!allIngredients.length && !allRecipes.length) {
+        document.getElementById("planStatus").textContent = "No ingredients/recipes loaded yet.";
+        return;
+      }
+      createItemRow();
+      recalcSummary();
+    };
+
+    document.getElementById("btnClear").onclick = () => {
+      document.getElementById("planIngredients").innerHTML = "";
+      recalcSummary();
+    };
+
+    document.getElementById("planServings").oninput = recalcSummary;
+    document.getElementById("btnAutoFit").onclick = autoFitServings;
+
+    (async function init() {
+      await loadData();
+      await loadGOAL();
+      updateTargetsUsedText();
+      if (allIngredients.length) {
+        createItemRow();
+      } else {
+        document.getElementById("planStatus").textContent =
+          "No ingredients defined yet. Add some on the Add page.";
+      }
+      recalcSummary();
+    })();
+  
+    // ---------------- LLM Assistant ----------------
+    function planContextFrom(per = null, contributions = null) {
+      const days = parseFloat(document.getElementById("planServings").value || "1") || 1;
+      const rows = [...document.querySelectorAll("#planIngredients .ingredient-row")].map(row => {
+        const typeSel = row.querySelector("select.item-type");
+        const selects = row.querySelectorAll("select");
+        const inputs = row.querySelectorAll("input");
+
+        const t = typeSel ? typeSel.value : "ingredient";
+        const itemSel = selects.length >= 2 ? selects[1] : selects[0];
+        const qtyEl = inputs[0];
+        const unitEl = inputs[1];
+
+        const itemId = itemSel?.value || "";
+        const qty = parseFloat(qtyEl?.value || "0") || 0;
+        const unit = unitEl?.value || "";
+
+        if (t === "recipe") {
+          const rec = allRecipes.find(r => r.recipe_id === itemId);
+          return {
+            item_type: "recipe",
+            recipe_id: itemId,
+            name: rec?.name || "",
+            qty,
+            unit
+          };
+        } else {
+          const ing = allIngredients.find(i => i.ingredient_id === itemId);
+          return {
+            item_type: "ingredient",
+            ingredient_id: itemId,
+            name: ing?.name || "",
+            qty,
+            unit
+          };
+        }
+      }).filter(r => (r.ingredient_id || r.recipe_id) && r.qty > 0);
+
+      return {
+        days,
+        goal: GOAL,
+        perDay: per,
+        contributions,
+        items: rows
+      };
+    }
+
+    function appendAssistant(role, text) {
+      const log = document.getElementById("assistantLog");
+      if (!log) return;
+
+      const wrap = document.createElement("div");
+      wrap.className = "chat-msg " + role;
+
+      const roleEl = document.createElement("div");
+      roleEl.className = "chat-role";
+      roleEl.textContent = role;
+
+      const bubble = document.createElement("div");
+      bubble.className = "chat-bubble";
+      bubble.innerHTML = formatChatText(text);
+
+      wrap.appendChild(roleEl);
+      wrap.appendChild(bubble);
+      log.appendChild(wrap);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    async function callLLM(task, userText, contextObj) {
+      const payload = {
+        task,
+        user_text: userText || "",
+        context: contextObj || planContextFrom()
+      }
+
+    window.scheduleLLM = function(task, userText, contextObj, targetElId) {
+      const key = String(targetElId || "");
+      window.__llmTimers = window.__llmTimers || {};
+      if (window.__llmTimers[key]) clearTimeout(window.__llmTimers[key]);
+
+      const el = targetElId ? document.getElementById(targetElId) : null;
+
+      if (targetElId === "substitutionSuggestions") {
+        renderSubstitutionIdeas("Thinking…");
+      } else if (targetElId === "helperSuggestions") {
+        window.renderHelperSuggestions("Thinking…");
+      } else if (el) {
+        el.textContent = "Thinking…";
+      }
+
+      window.__llmTimers[key] = setTimeout(async () => {
+        try {
+          const txt = await callLLM(task, userText, contextObj);
+
+          if (targetElId === "substitutionSuggestions") {
+            renderSubstitutionIdeas(txt);
+          } else if (targetElId === "helperSuggestions") {
+            window.renderHelperSuggestions(txt);
+          } else if (el) {
+            el.textContent = txt;
+          }
+        } catch (e) {
+          const msg = "LLM error: " + String(e);
+
+          if (targetElId === "substitutionSuggestions") {
+            renderSubstitutionIdeas(msg);
+          } else if (targetElId === "helperSuggestions") {
+            window.renderHelperSuggestions(msg);
+          } else if (el) {
+            el.textContent = msg;
+          }
+        }
+      }, 250);
+    }
+
+;
+      const res = await fetchJson("/api/llm", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      if (!res || typeof res.text !== "string") return "(No response)";
+      return res.text;
+    }
+
+    // Debounced auto-generation to avoid hammering the backend
+    let _llmTimer = null;
+    let _llmSig = "";
+    
+
+    const _orig_buildHelperSuggestions = window.buildHelperSuggestions;
+    const _orig_buildSubstitutionSuggestions = window.buildSubstitutionSuggestions;
+
+    window.buildHelperSuggestions = function(per) {
+      const ctx = planContextFrom(per, null);
+      window.scheduleLLM(
+        "helper_suggestions",
+        "Generate concise helper suggestions to hit the daily targets using the current day plan. Practical, no fluff.",
+        ctx,
+        "helperSuggestions"
+      );
+    };
+
+    window.buildSubstitutionSuggestions = function(per, contributions) {
+      const ctx = planContextFrom(per, contributions);
+      window.scheduleLLM(
+        "substitution_suggestions",
+        "Generate substitution ideas that improve the plan vs the daily targets. Prefer lower-sodium swaps when reasonable.",
+        ctx,
+        "substitutionSuggestions"
+      );
+    };
+
+    async function assistantSend() {
+      const input = document.getElementById("assistantInput");
+      const msg = (input?.value || "").trim();
+      if (!msg) return;
+      input.value = "";
+      appendAssistant("you", msg);
+      try {
+        const txt = await callLLM("chat", msg, planContextFrom());
+        appendAssistant("assistant", txt);
+      } catch (e) {
+        appendAssistant("error", String(e));
+      }
+    }
+
+    async function generateHelperNow() {
+      appendAssistant("assistant", "Generating helper suggestions…");
+      const per = null;
+      window.scheduleLLM(
+        "helper_suggestions",
+        "Generate concise helper suggestions to hit the daily targets using the current day plan. Practical, no fluff.",
+        planContextFrom(per, null),
+        "helperSuggestions"
+      );
+    }
+
+    async function generateSubsNow() {
+      appendAssistant("assistant", "Generating substitution ideas…");
+      window.scheduleLLM(
+        "substitution_suggestions",
+        "Generate substitution ideas that improve the plan vs the daily targets. Prefer lower-sodium swaps when reasonable.",
+        planContextFrom(null, null),
+        "substitutionSuggestions"
+      );
+    }
+
+    
+    // ---------------- Meal Genie ----------------
+    async function runMealGenie() {
+      const out = document.getElementById("genieOut");
+      const meta = document.getElementById("genieMeta");
+      const btn = document.getElementById("btnMealGenie");
+      const addBtn = document.getElementById("btnMealGenieAddToPlan");
+      if (!out || !btn) return;
+
+      if (addBtn) { addBtn.disabled = true; addBtn.dataset.items = ""; }
+
+      out.classList.add("hidden");
+      if (meta) meta.innerHTML = "";
+      const menuEl = document.getElementById("mealGenieMenu");
+      const shopEl = document.getElementById("mealGenieShopping");
+      if (menuEl) menuEl.innerHTML = "";
+      if (shopEl) shopEl.innerHTML = "";
+
+      setMealGenieLoading(true);
+
+      try {
+        const req = (document.getElementById("genieReq")?.value || "").trim();
+        const payload = { requirements: req, goal: GOAL };
+
+        const res = await fetchJson("/api/meal_genie", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+
+        const rawMenu = (res?.menu_text || res?.text || res?.output || "").trim();
+        const rawShop = (res?.shopping_list_text || "").trim();
+
+        const combined = rawShop ? (rawMenu + "\n\nShopping List\n" + rawShop) : rawMenu;
+        const parsed = parseMealGenieText(combined);
+
+        if (meta) {
+          const chips = [];
+          if (req) chips.push(`<span class="chip">Reqs: ${escapeHtml(req)}</span>`);
+          chips.push(`<span class="chip">Target: ${GOAL.calories} kcal, ${GOAL.protein}P / ${GOAL.carbs}C / ${GOAL.fat}F</span>`);
+          meta.innerHTML = chips.join("");
+        }
+
+        renderMealGenieResult(parsed, combined);
+        out.classList.remove("hidden");
+
+        if (addBtn && res?.structured?.day1_items && Array.isArray(res.structured.day1_items) && res.structured.day1_items.length) {
+          addBtn.disabled = false;
+          addBtn.dataset.items = JSON.stringify(res.structured.day1_items);
+        }
+      } catch (e) {
+        out.classList.remove("hidden");
+        if (menuEl) {
+          menuEl.innerHTML = `<pre class="mono">Meal Genie error: ${escapeHtml(String(e))}</pre>`;
+        } else {
+          out.textContent = "Meal Genie error: " + String(e);
+        }
+      } finally {
+        setMealGenieLoading(false);
+      }
+    }
+
+    function addDay1ToPlan() {
+      const addBtn = document.getElementById("btnMealGenieAddToPlan");
+      const raw = addBtn?.dataset.items || "";
+      if (!raw) return;
+
+      let items = [];
+      try { items = JSON.parse(raw); } catch { return; }
+      if (!Array.isArray(items) || !items.length) return;
+
+      document.getElementById("planIngredients").innerHTML = "";
+      items.forEach(it => {
+        const row = createItemRow();
+        const typeSel = row.querySelector("select.item-type");
+        const selects = row.querySelectorAll("select");
+        const inputs = row.querySelectorAll("input");
+        const itemSel = selects.length >= 2 ? selects[1] : selects[0];
+        const qty = inputs[0];
+        const unit = inputs[1];
+
+        const t = it.item_type || it.source_type || "ingredient";
+        typeSel.value = (t === "recipe") ? "recipe" : "ingredient";
+        typeSel.onchange(); 
+
+        if (typeSel.value === "recipe") {
+          itemSel.value = it.recipe_id || it.source_id || "";
+          qty.value = it.qty || 1;
+          unit.value = it.unit || "serving";
+        } else {
+          itemSel.value = it.ingredient_id || it.source_id || "";
+          qty.value = it.qty || 0;
+          unit.value = it.unit || "";
+        }
+      });
+
+      recalcSummary();
+      appendAssistant("assistant", "Added Day 1 menu items to the plan.");
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("btnAssistantSend")?.addEventListener("click", assistantSend);
+      document.getElementById("assistantInput")?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") assistantSend();
+      });
+      document.getElementById("btnGenHelpers")?.addEventListener("click", generateHelperNow);
+      document.getElementById("btnGenSubs")?.addEventListener("click", generateSubsNow);
+
+      document.getElementById("btnMealGenie")?.addEventListener("click", runMealGenie);
+      document.getElementById("btnMealGenieAddToPlan")?.addEventListener("click", addDay1ToPlan);
+    });
+
+
+
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, (c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+    function formatChatText(raw) {
+      const text = String(raw ?? "").replace(/\r/g, "").trim();
+      if (!text) return "";
+
+      let norm = text;
+      norm = norm.replace(/\n\s*•\s*/g, "\n- ");
+      norm = norm.replace(/\n\s*-\s*/g, "\n- ");
+      norm = norm.replace(/\s+•\s+/g, "\n- ");
+      norm = norm.replace(/\s+-\s+/g, "\n- ");
+
+      const lines = norm.split("\n").map(s => s.trim()).filter(Boolean);
+      const bullets = lines.filter(l => l.startsWith("- ")).map(l => l.replace(/^-+\s*/, "").trim());
+      const hasBullets = bullets.length >= 2;
+
+      if (hasBullets) {
+        const firstBulletIdx = lines.findIndex(l => l.startsWith("- "));
+        const leadLines = firstBulletIdx > 0 ? lines.slice(0, firstBulletIdx) : [];
+        const lead = leadLines.join(" ");
+
+        const leadHtml = lead ? `<p>${escapeHtml(lead)}</p>` : "";
+        const listHtml = `<ul>${bullets.map(b => `<li>${escapeHtml(b)}</li>`).join("")}</ul>`;
+        return leadHtml + listHtml;
+      }
+
+    window.renderHelperSuggestions = function(text){
+      const el = document.getElementById("helperSuggestions");
+      if(!el) return;
+      const raw = String(text ?? "").trim();
+      if(!raw){ el.innerHTML = ""; return; }
+      el.innerHTML = formatChatText(raw);
+    };
+
+
+    // Helper - use the same bullet-aware formatter as Assistant chat.
+
+      
+      const paras = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+      return paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("");
+    }
+
+
+
+function setMealGenieLoading(isLoading){
+  const btn = document.getElementById("btnMealGenie");
+  const status = document.getElementById("mealGenieStatus");
+  if(!btn || !status) return;
+
+  if(isLoading){
+    btn.disabled = true;
+    status.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>In progress… fetching your 3-day menu</span>';
+  } else {
+    btn.disabled = false;
+    status.textContent = '';
+  }
+}
+
+
+function parseMealGenieText(raw){
+  const out = { days: [], shopping: {} };
+  if(!raw) return out;
+
+  let text = String(raw).replace(/\r/g,"");
+
+  text = text.replace(/\*\*(.*?)\*\*/g,"$1");
+  text = text.replace(/__(.*?)__/g,"$1");
+
+  let menuText = text;
+  const shopMatch = text.match(/Shopping List/i);
+  if(shopMatch){
+    menuText = text.slice(0, shopMatch.index).trim();
+  }
+
+  menuText = menuText.replace(/(\n|^)\s*(Day\s*\d+)/gi,"\n$2");
+
+  const dayBlocks = menuText.split(/(?=Day\s*\d+)/i).map(s=>s.trim()).filter(Boolean);
+
+  dayBlocks.forEach(block=>{
+    const day = { breakfast:"", lunch:"", dinner:"", snacks:[] };
+
+    block.split(/\n/).forEach(line=>{
+      const l=line.trim();
+      if(/^breakfast[:\-]/i.test(l)) day.breakfast = l.split(/[:\-]/)[1]?.trim()||"";
+      else if(/^lunch[:\-]/i.test(l)) day.lunch = l.split(/[:\-]/)[1]?.trim()||"";
+      else if(/^dinner[:\-]/i.test(l)) day.dinner = l.split(/[:\-]/)[1]?.trim()||"";
+      else if(/^snack/i.test(l)) {
+        const v=l.split(/[:\-]/)[1];
+        if(v) day.snacks.push(v.trim());
+      }
+      else if(l.startsWith("-") && day.snacks.length){
+        day.snacks.push(l.replace(/^-+/,"").trim());
+      }
+    });
+
+    out.days.push(day);
+  });
+
+  return out;
+}
+
+
+function renderMealGenieResult(parsed, rawText){
+  const menuEl = document.getElementById("mealGenieMenu");
+  const shopEl = document.getElementById("mealGenieShopping");
+  if(!menuEl || !shopEl) return;
+
+  if(parsed && parsed.days && parsed.days.length){
+    menuEl.innerHTML = parsed.days.map(d=>{
+      const snacks = (d.snacks && d.snacks.length)
+        ? `<ul class="bullets">${d.snacks.map(s=>`<li>${escapeHtml(s)}</li>`).join("")}</ul>`
+        : `<div class="muted">(no snacks parsed)</div>`;
+      return `
+        <div class="day-card">
+          <h4>Day ${d.day}</h4>
+          <div class="kv"><b>Breakfast:</b> ${escapeHtml(d.breakfast || "")}</div>
+          <div class="kv"><b>Lunch:</b> ${escapeHtml(d.lunch || "")}</div>
+          <div class="kv"><b>Dinner:</b> ${escapeHtml(d.dinner || "")}</div>
+          <div class="kv"><b>Snacks:</b>${snacks}</div>
+        </div>
+      `;
+    }).join("");
+  } else {
+    menuEl.innerHTML = `<pre class="mono">${escapeHtml(rawText || "")}</pre>`;
+  }
+
+  const cats = parsed && parsed.shopping ? Object.keys(parsed.shopping) : [];
+  if(cats.length){
+    shopEl.innerHTML = cats.map(cat=>{
+      const items = parsed.shopping[cat] || [];
+      return `
+        <div class="shop-card">
+          <h4>${escapeHtml(cat)}</h4>
+          <ul class="bullets">
+            ${items.map(it=>`<li>${escapeHtml(it)}</li>`).join("")}
+          </ul>
+        </div>
+      `;
+    }).join("");
+  } else {
+    shopEl.innerHTML = `<pre class="mono">${escapeHtml(rawText || "")}</pre>`;
+  }
+}
+
+</script>
+</body>
+</html>

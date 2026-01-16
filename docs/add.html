@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Add Ingredients & Recipes</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" href="/favicon-32.ico" sizes="32x32">
+  <link rel="icon" type="image/png" href="/favicon-16.ico" sizes="16x16">
+</head>
+<body>
+  <header>
+    <h1>Add & Manage Ingredients / Recipes</h1>
+    <div class="topbar-right">
+      <a href="index.html" style="color: #ffffff; text-decoration: none">Home &nbsp</a>
+      <a href="track.html" style="color: #ffffff; text-decoration: none">&nbsp Track &nbsp</a>
+      <a href="results.html" style="color: #ffffff; text-decoration: none">&nbsp Results &nbsp</a>
+      <a href="plan.html" style="color: #ffffff; text-decoration: none">&nbsp Day Planner &nbsp</a>
+      <a href="plan_bot.html" style="color: #ffffff; text-decoration: none">&nbsp Planning Assistant &nbsp</a>
+      <a href="reports.html" style="color: #ffffff; text-decoration: none">&nbsp Reporting</a>
+    </div>
+  </header>
+
+  <main class="container two-column">
+<div style="grid-column:1/-1; padding:6px; font-size:12px; color:#555" id="debugStatus"></div>
+    <section class="card">
+      <h2>Add / Edit Ingredient</h2>
+<label>Edit existing
+<select id="ingSelect"><option>loading…</option></select>
+</label>
+      <label>Name
+        <input type="text" id="ingName">
+      </label>
+      <label>Description
+        <textarea id="ingDesc" rows="4"></textarea>
+      </label>
+
+      <button id="btnSuggest">Suggest Nutrition via LLM</button>
+
+      <div id="nutritionSuggestion" class="suggestion hidden">
+        <h3>Suggested Nutrition</h3>
+        <div class="grid-2">
+          <label>Base amount <input type="number" id="ingBaseAmount"></label>
+          <label>Base unit <input type="text" id="ingBaseUnit"></label>
+          <label>Calories <input type="number" id="ingCalories"></label>
+          <label>Fat (g) <input type="number" id="ingFat"></label>
+          <label>Protein (g) <input type="number" id="ingProtein"></label>
+          <label>Carbs (g) <input type="number" id="ingCarbs"></label>
+          <label>Sodium (mg) <input type="number" id="ingSodium"></label>
+          <label>Fiber (g) <input type="number" id="ingFiber"></label>
+          <label>Sugar (g) <input type="number" id="ingSugar"></label>
+        </div>
+        <button id="btnSaveIngredient">Save Ingredient</button>
+      </div>
+
+      <div id="ingStatus" class="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>Add / Edit Recipe</h2>
+<label>Edit existing
+<select id="recSelect"><option>loading…</option></select>
+</label>
+      <label>Name
+        <input type="text" id="recName">
+      </label>
+      <label>Description
+        <input type="text" id="recDesc">
+      </label>
+
+      <label>Servings per batch
+        <input type="number" id="recServings" value="1">
+      </label>
+
+      <label>Rating (0–5)
+        <input type="number" id="recRating" min="0" max="5" step="0.5">
+      </label>
+
+      <label>Instructions
+        <textarea id="recInstructions" rows="4"></textarea>
+      </label>
+
+      <label>Notes
+        <textarea id="recNotes" rows="3"></textarea>
+      </label>
+
+      <h3>Ingredients</h3>
+      <div id="recIngredients"></div>
+      <button id="btnAddRecIngredient">Add Ingredient Row</button>
+
+      <button id="btnSaveRecipe">Save Recipe</button>
+      <div id="recStatus" class="status"></div>
+    </section>
+  </main>
+
+  <script>
+
+function normId(o){ return o.ingredient_id || o.recipe_id || o.id || o.uuid; }
+
+    async function fetchJson(url, options = {}) {
+      const res = await fetch(url, {
+        headers: { "Content-Type": "application/json" },
+        ...options
+      });
+
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} for ${url}: ${text.slice(0,200)}`);
+      }
+      return JSON.parse(text);
+    }
+    // Ingredient LLM suggestion
+    document.getElementById("btnSuggest").onclick = async () => {
+      const name = document.getElementById("ingName").value.trim();
+      const description = document.getElementById("ingDesc").value.trim();
+      if (!name) return;
+
+      const data = await fetchJson("/api/llm_nutrition", {
+        method: "POST",
+        body: JSON.stringify({ name, description })
+      });
+
+      document.getElementById("nutritionSuggestion").classList.remove("hidden");
+      document.getElementById("ingBaseAmount").value = data.base_amount ?? 1;
+      document.getElementById("ingBaseUnit").value = data.base_unit ?? "serving";
+      document.getElementById("ingCalories").value = data.calories ?? 0;
+      document.getElementById("ingFat").value = data.fat ?? 0;
+      document.getElementById("ingProtein").value = data.protein ?? 0;
+      document.getElementById("ingCarbs").value = data.carbs ?? 0;
+      document.getElementById("ingSodium").value = data.sodium ?? 0;
+      document.getElementById("ingFiber").value = data.fiber ?? 0;
+      document.getElementById("ingSugar").value = data.sugar ?? 0;
+    };
+
+    
+document.getElementById("ingSelect").onchange = () => {
+  const id = ingSelect.value;
+  const ing = allIngredients.find(x => normId(x) == id);
+  if (!ing) return;
+  ingName.value = ing.name || "";
+  ingDesc.value = ing.description || "";
+  ingBaseAmount.value = ing.base_amount || "";
+  ingBaseUnit.value = ing.base_unit || "";
+  ingCalories.value = ing.calories || "";
+  ingFat.value = ing.fat || "";
+  ingProtein.value = ing.protein || "";
+  ingCarbs.value = ing.carbs || "";
+  ingSodium.value = ing.sodium || "";
+  ingFiber.value = ing.fiber || "";
+  ingSugar.value = ing.sugar || "";
+  nutritionSuggestion.classList.remove("hidden");
+};
+
+document.getElementById("btnSaveIngredient").onclick = async () => {
+
+      const payload = {
+        name: document.getElementById("ingName").value.trim(),
+        description: document.getElementById("ingDesc").value.trim(),
+        base_amount: parseFloat(document.getElementById("ingBaseAmount").value || "1"),
+        base_unit: document.getElementById("ingBaseUnit").value || "serving",
+        calories: parseFloat(document.getElementById("ingCalories").value || "0"),
+        fat: parseFloat(document.getElementById("ingFat").value || "0"),
+        protein: parseFloat(document.getElementById("ingProtein").value || "0"),
+        carbs: parseFloat(document.getElementById("ingCarbs").value || "0"),
+        sodium: parseFloat(document.getElementById("ingSodium").value || "0"),
+        fiber: parseFloat(document.getElementById("ingFiber").value || "0"),
+        sugar: parseFloat(document.getElementById("ingSugar").value || "0")
+      };
+
+      
+const id = ingSelect.value;
+if (id) payload.ingredient_id = id;
+const res = await fetchJson("/api/ingredients", {
+  method:"POST",
+
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+
+      document.getElementById("ingStatus").textContent = "Saved: " + payload.name;
+
+        // clear form after save
+      document.getElementById("ingName").value = "";
+      document.getElementById("ingDesc").value = "";
+      document.getElementById("ingBaseAmount").value = "";
+      document.getElementById("ingBaseUnit").value = "";
+      document.getElementById("ingCalories").value = "";
+      document.getElementById("ingFat").value = "";
+      document.getElementById("ingProtein").value = "";
+      document.getElementById("ingCarbs").value = "";
+      document.getElementById("ingSodium").value = "";
+      document.getElementById("ingFiber").value = "";
+      document.getElementById("ingSugar").value = "";
+
+      // hide the suggestion panel again
+      document.getElementById("nutritionSuggestion").classList.add("hidden");
+      await loadIngredients();
+      refreshRecipeIngredientDropdowns();
+    };
+
+    let allIngredients = [];
+    let allRecipes = [];
+
+    
+async function loadIngredients() {
+  const data = await fetchJson("/api/ingredients");
+  console.log("INGREDIENTS RAW:", data);
+
+  allIngredients = Array.isArray(data) ? data : [];
+
+  allIngredients.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+  const sel = document.getElementById("ingSelect");
+  sel.innerHTML = '<option value="">-- new ingredient --</option>';
+  allIngredients.forEach(i => {
+    const id = normId(i);
+    const o = document.createElement("option");
+    o.value = id;
+    o.textContent = i.name || "(unnamed)";
+    sel.appendChild(o);
+  });
+
+  debugStatus.textContent = `Loaded ${allIngredients.length} ingredients, ${allRecipes.length} recipes`;
+
+  // Populate recipe ingredient dropdowns sorted 
+  refreshRecipeIngredientDropdowns();
+
+  return allIngredients;
+}
+    
+    function refreshRecipeIngredientDropdowns() {
+      const rows = document.querySelectorAll("#recIngredients .ingredient-row");
+      rows.forEach(row => {
+        const select = row.querySelector("select");
+        const current = select.value;
+
+        select.innerHTML = "";
+        allIngredients.forEach(ing => {
+          const opt = document.createElement("option");
+          opt.value = normId(ing);
+          opt.textContent = ing.name || "(unnamed)";
+          select.appendChild(opt);
+        });
+
+        if (current) select.value = current;
+      });
+    }
+
+    function addRecipeIngredientRow() {
+      const container = document.getElementById("recIngredients");
+      const row = document.createElement("div");
+      row.className = "ingredient-row";
+      
+      const select = document.createElement("select");
+      allIngredients.forEach(ing => {
+        const opt = document.createElement("option");
+        opt.value = ing.ingredient_id;
+        opt.textContent = ing.name;
+        select.appendChild(opt);
+      });
+    
+    
+      const qtyInput = document.createElement("input");
+      qtyInput.type = "number";
+      qtyInput.placeholder = "Quantity";
+
+      const unitInput = document.createElement("input");
+      unitInput.type = "text";
+      unitInput.placeholder = "Unit";
+
+      row.appendChild(select);
+      row.appendChild(qtyInput);
+      row.appendChild(unitInput);
+      container.appendChild(row);
+    }
+
+    document.getElementById("btnAddRecIngredient").onclick = () => {
+      addRecipeIngredientRow();
+    };
+
+function normalizeIngredients(x) {
+  if (!x) return [];
+
+  if (Array.isArray(x)) return x;
+
+  if (typeof x === "string") {
+    const s = x.trim();
+    if (!s || s === "null" || s === "None") return [];
+    try {
+      const parsed = JSON.parse(s);
+      return Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+    } catch {
+      // If it's some non-JSON junk, treat as empty
+      return [];
+    }
+  }
+
+  if (typeof x === "object") return [x];
+
+  return [];
+}
+   
+document.getElementById("recSelect").onchange = () => {
+  const id = recSelect.value;
+  const r = allRecipes.find(x => normId(x) == id);
+  if (!r) return;
+  recName.value = r.name || "";
+  recDesc.value = r.description || "";
+  recServings.value = r.servings_per_batch || 1;
+  recRating.value = r.rating || 0;
+  recInstructions.value = r.instructions || "";
+  recNotes.value = r.notes || "";
+  recIngredients.innerHTML="";
+  normalizeIngredients(r.ingredients).forEach(i => {
+  addRecipeIngredientRow();
+  const row = recIngredients.lastChild;
+  const [sel, qty, unit] = row.querySelectorAll("select,input");
+
+  sel.value = i.ingredient_id || i.id || "";
+  qty.value = i.qty ?? "";
+  unit.value = i.unit ?? "";
+});
+};
+
+document.getElementById("btnSaveRecipe").onclick = async () => {
+
+      const rows = document.querySelectorAll("#recIngredients .ingredient-row");
+      const ingredients = [];
+      rows.forEach(r => {
+        const [sel, qty, unit] = r.querySelectorAll("select, input");
+        if (!sel.value) return;
+        ingredients.push({
+          ingredient_id: sel.value,
+          qty: parseFloat(qty.value || "0"),
+          unit: unit.value || ""
+        });
+      });
+
+      const payload = {
+        name: document.getElementById("recName").value.trim(),
+        description: document.getElementById("recDesc").value.trim(),
+        servings_per_batch: parseFloat(document.getElementById("recServings").value || "1"),
+        rating: parseFloat(document.getElementById("recRating").value || "0"),
+        instructions: document.getElementById("recInstructions").value.trim(),
+        notes: document.getElementById("recNotes").value.trim(),
+        ingredients
+      };
+
+      
+const id = recSelect.value;
+if (id) payload.recipe_id = id;
+const res = await fetchJson("/api/recipes", {
+  method:"POST",
+
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+
+      document.getElementById("recStatus").textContent = "Saved: " + payload.name;
+    };
+
+    
+async function loadRecipes(){
+  const data = await fetchJson("/api/recipes");
+  console.log("RECIPES RAW:", data);
+  allRecipes = Array.isArray(data) ? data : [];
+  const sel = document.getElementById("recSelect");
+  sel.innerHTML = '<option value="">-- new recipe --</option>';
+  allRecipes.forEach(r=>{
+    const id = normId(r);
+    const o=document.createElement("option");
+    o.value=id;
+    o.textContent=r.name || "(unnamed)";
+    sel.appendChild(o);
+  });
+  allRecipes.sort((a, b) => a.name.localeCompare(b.name));
+  debugStatus.textContent = `Loaded ${allIngredients.length} ingredients, ${allRecipes.length} recipes`;
+  return allRecipes;
+}
+
+    Promise.all([loadIngredients(), loadRecipes()]).then(()=>addRecipeIngredientRow());
+  </script>
+</body>
+</html>

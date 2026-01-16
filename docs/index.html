@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Food Tracker</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" href="/favicon-32.ico" sizes="32x32">
+  <link rel="icon" type="image/png" href="/favicon-16.ico" sizes="16x16">
+</head>
+<body>
+  <header>
+    <h1>Food Tracker</h1>
+    <div class="topbar-right">
+      <a href="index.html" style="color: #ffffff; text-decoration: none">Home &nbsp</a>
+      <a href="add.html" style="color: #ffffff; text-decoration: none">&nbsp Add &nbsp</a>
+      <a href="track.html" style="color: #ffffff; text-decoration: none">&nbsp Track &nbsp</a>
+      <a href="results.html" style="color: #ffffff; text-decoration: none">&nbsp Results &nbsp</a>
+      <a href="plan.html" style="color: #ffffff; text-decoration: none">&nbsp Day Planner &nbsp</a>
+      <a href="plan_bot.html" style="color: #ffffff; text-decoration: none">&nbsp Planning Assistant &nbsp</a>
+      <a href="reports.html" style="color: #ffffff; text-decoration: none">&nbsp Reporting</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <nav class="card nav-links">
+      <h2>Menu</h2>
+      <ul>
+        <li><a href="add.html">Add & Manage Ingredients / Recipes</a></li>
+        <li><a href="track.html">Track Daily Intake</a></li>
+        <li><a href="results.html">View Results & Trends</a></li>
+        <li><a href="plan.html">Day Planner</a></li>
+        <li><a href="plan_bot.html">Planning Assistant</a></li>
+        <li><a href="reports.html">Reporting</a></li>
+      </ul>
+    </nav>
+
+    <!-- Daily targets (saved to data/metrics.json) -->
+    <section class="card" id="dailyTargets">
+      <h2>Daily Targets</h2>
+
+      <form id="targetsForm" autocomplete="off">
+        <div class="targets-grid">
+          <label>Calories
+            <input type="number" id="tCalories" min="0" step="1" placeholder="0">
+          </label>
+          <label>Protein (g)
+            <input type="number" id="tProtein" min="0" step="1" placeholder="0">
+          </label>
+          <label>Carbs (g)
+            <input type="number" id="tCarbs" min="0" step="1" placeholder="0">
+          </label>
+          <label>Fat (g)
+            <input type="number" id="tFat" min="0" step="1" placeholder="0">
+          </label>
+          <label>Fiber (g)
+            <input type="number" id="tFiber" min="0" step="1" placeholder="0">
+          </label>
+          <label>Sodium (mg)
+            <input type="number" id="tSodium" min="0" step="1" placeholder="0">
+          </label>
+        </div>
+
+        <div class="targets-actions">
+          <button type="button" class="btn" id="btnSaveTargets">Save Targets</button>
+          <button type="button" class="btn" id="btnResetTargets">Reset</button>
+        </div>
+
+        <div id="targetsStatus" style="margin-top:10px; font-size: 0.95em;"></div>
+      </form>
+
+      <style>
+        #dailyTargets .targets-grid{
+          display:grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 10px 14px;
+          margin-top: 10px;
+        }
+        #dailyTargets label{
+          display:flex;
+          flex-direction:column;
+          gap:6px;
+          font-size: 0.95em;
+        }
+        #dailyTargets input{
+          padding: 8px 10px;
+          border-radius: 8px;
+          border: 1px solid rgba(0,0,0,0.15);
+        }
+        #dailyTargets .targets-actions{
+          display:flex;
+          gap:10px;
+          margin-top: 12px;
+          flex-wrap: wrap;
+        }
+      </style>
+    </section>
+  </main>
+
+  <script>
+ 
+    // Try POST /api/metrics 
+    // If fails, download of metrics.json to drop it in docs/data.
+
+    const METRICS_PATH = "data/metrics.json";
+    const SAVE_API = "/api/metrics"; 
+
+    const els = {
+      calories: document.getElementById("tCalories"),
+      protein: document.getElementById("tProtein"),
+      carbs: document.getElementById("tCarbs"),
+      fat: document.getElementById("tFat"),
+      fiber: document.getElementById("tFiber"),
+      sodium: document.getElementById("tSodium"),
+      save: document.getElementById("btnSaveTargets"),
+      reset: document.getElementById("btnResetTargets"),
+      status: document.getElementById("targetsStatus"),
+    };
+
+    function setStatus(msg, isError=false){
+      els.status.textContent = msg;
+      els.status.style.color = isError ? "#b00020" : "";
+    }
+
+    function asNum(v){
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function getPayload(){
+      return {
+        updated_at: new Date().toISOString(),
+        targets: {
+          calories: asNum(els.calories.value),
+          protein_g: asNum(els.protein.value),
+          carbs_g: asNum(els.carbs.value),
+          fat_g: asNum(els.fat.value),
+          fiber_g: asNum(els.fiber.value),
+          sodium_mg: asNum(els.sodium.value),
+        }
+      };
+    }
+
+    function applyPayload(data){
+      const t = (data && data.targets) ? data.targets : {};
+      els.calories.value = t.calories ?? "";
+      els.protein.value  = t.protein_g ?? "";
+      els.carbs.value    = t.carbs_g ?? "";
+      els.fat.value      = t.fat_g ?? "";
+      els.fiber.value    = t.fiber_g ?? "";
+      els.sodium.value   = t.sodium_mg ?? "";
+    }
+
+    async function loadMetrics(){
+      try{
+        const r = await fetch(METRICS_PATH, { cache: "no-store" });
+        if(!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        applyPayload(data);
+        setStatus("Loaded targets from data/metrics.json");
+      }catch(e){
+        setStatus("No data/metrics.json found yet. Enter targets and click Save.");
+      }
+    }
+
+    function downloadJson(filename, obj){
+      const blob = new Blob([JSON.stringify(obj, null, 2)], {type:"application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function saveMetrics(){
+      const payload = getPayload();
+      setStatus("Saving…");
+
+      try{
+        const r = await fetch(SAVE_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if(!r.ok) throw new Error(`HTTP ${r.status}`);
+        setStatus("Saved via /api/metrics.");
+        return;
+      }catch(e){
+        downloadJson("metrics.json", payload);
+        setStatus("Server save not available (yet). Downloaded metrics.json instead. Put it in /data/metrics.json.");
+      }
+    }
+
+    function resetForm(){
+      [els.calories, els.protein, els.carbs, els.fat, els.fiber, els.sodium].forEach(i => i.value = "");
+      setStatus("Cleared. Nothing saved.");
+    }
+
+    els.save.addEventListener("click", saveMetrics);
+    els.reset.addEventListener("click", resetForm);
+
+    loadMetrics();
+  </script>
+</body>
+</html>

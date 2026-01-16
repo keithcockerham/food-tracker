@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Results & Trends</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" href="/favicon-32.ico" sizes="32x32">
+  <link rel="icon" type="image/png" href="/favicon-16.ico" sizes="16x16">
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Results & Trends</h1>
+    <div class="topbar-right">
+      <a href="index.html" style="color: #ffffff; text-decoration: none">Home &nbsp</a>
+      <a href="add.html" style="color: #ffffff; text-decoration: none">&nbsp Add &nbsp</a>
+      <a href="track.html" style="color: #ffffff; text-decoration: none">&nbsp Track &nbsp</a>
+      <a href="plan.html" style="color: #ffffff; text-decoration: none">&nbsp Day Planner &nbsp</a>
+      <a href="plan_bot.html" style="color: #ffffff; text-decoration: none">&nbsp Planning Assistant &nbsp</a>
+      <a href="reports.html" style="color: #ffffff; text-decoration: none">&nbsp Reporting</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Daily Nutrition</h2>
+      <div id="dailyNutrition"></div>
+    </section>
+
+    <section class="card">
+      <h2>Daily % of Your Targets</h2>
+      <div id="dailyRDA"></div>
+    </section>
+    
+    <section class="card">
+      <h2>Hourly Intake Trend</h2>
+      <div id="hourlyTrend"></div>
+    </section>
+  </main>
+
+  <script>
+    async function fetchJson(url, options = {}) {
+      const res = await fetch(url, {
+        headers: { "Content-Type": "application/json" },
+        ...options
+      });
+      return res.json();
+    }
+    let RDA = {
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      fiber: 0,
+      sodium: 0
+    };
+
+    async function loadRDA() {
+      const urls = ["/api/metrics", "/data/metrics.json"];
+
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, { cache: "no-store" });
+          if (!res.ok) continue;
+          const data = await res.json();
+
+          const t = data?.targets ?? data ?? {};
+          RDA = {
+            calories: Number(t.calories ?? 0),
+            protein: Number(t.protein_g ?? t.protein ?? 0),
+            carbs: Number(t.carbs_g ?? t.carbs ?? 0),
+            fat: Number(t.fat_g ?? t.fat ?? 0),
+            fiber: Number(t.fiber_g ?? t.fiber ?? 0),
+            sodium: Number(t.sodium_mg ?? t.sodium ?? 0),
+          };
+
+          return RDA;
+        } catch (e) {
+        }
+      }
+
+
+  return RDA;
+}
+    function groupByDate(entries) {
+      const byDate = {};
+      entries.forEach(e => {
+        const date = e.date;
+        if (!byDate[date]) {
+          byDate[date] = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+        }
+        byDate[date].calories += e.calories || 0;
+        byDate[date].protein += e.protein || 0;
+        byDate[date].carbs += e.carbs || 0;
+        byDate[date].fat += e.fat || 0;
+      });
+      return byDate;
+    }
+
+    function groupByHour(entries) {
+      const byHour = {};
+      entries.forEach(e => {
+        if (!e.timestamp) return;
+        const hour = new Date(e.timestamp).getHours();
+        if (!byHour[hour]) byHour[hour] = 0;
+        byHour[hour] += e.calories || 0;
+      });
+      return byHour;
+    }
+
+    async function init() {
+      const entries = await fetchJson("/api/calendar");
+      await loadRDA();
+      const byDate = groupByDate(entries);
+      const dates = Object.keys(byDate).sort();
+      const calories = dates.map(d => byDate[d].calories);
+      const protein = dates.map(d => byDate[d].protein);
+      const carbs = dates.map(d => byDate[d].carbs);
+      const fat = dates.map(d => byDate[d].fat);
+
+
+
+      Plotly.newPlot("dailyNutrition", [
+        { x: dates, y: calories, name: "Calories", type: "bar" },
+        { x: dates, y: protein, name: "Protein (g)", type: "bar" },
+        { x: dates, y: carbs,   name: "Carbs (g)", type: "bar" },
+        { x: dates, y: fat,     name: "Fat (g)", type: "bar" }
+      ], {
+        barmode: "group",
+        title: "Daily Intake"
+      });
+
+      const pctCalories = dates.map(d => (byDate[d].calories / RDA.calories) * 100);
+      const pctProtein  = dates.map(d => (byDate[d].protein  / RDA.protein)  * 100);
+      const pctCarbs    = dates.map(d => (byDate[d].carbs    / RDA.carbs)    * 100);
+      const pctFat      = dates.map(d => (byDate[d].fat      / RDA.fat)      * 100);
+
+      Plotly.newPlot("dailyRDA", [
+        { x: dates, y: pctCalories, name: "Calories", type: "bar" },
+        { x: dates, y: pctProtein,  name: "Protein",  type: "bar" },
+        { x: dates, y: pctCarbs,    name: "Carbs",    type: "bar" },
+        { x: dates, y: pctFat,      name: "Fat",      type: "bar" }
+      ], {
+        barmode: "group",
+        title: "% of RDA",
+        yaxis: {
+          title: "% of recommended daily intake",
+          range: [0, Math.max(...pctCalories, ...pctProtein, ...pctCarbs, ...pctFat, 100)]
+        }
+      });
+
+      const shapes = [{
+        type: "line",
+        x0: dates[0],
+        x1: dates[dates.length - 1],
+        y0: 100,
+        y1: 100,
+        line: { dash: "dash", width: 1, color: "gray" }
+      }];
+
+      const byHour = groupByHour(entries);
+      const hours = Array.from({ length: 24 }, (_, i) => i);
+      const calsByHour = hours.map(h => byHour[h] || 0);
+
+      Plotly.newPlot("hourlyTrend", [
+        { x: hours, y: calsByHour, type: "scatter", mode: "lines+markers", name: "Calories" }
+      ], {
+        title: "Calories by Hour",
+        xaxis: { title: "Hour of Day" },
+        yaxis: { title: "Calories" }
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>

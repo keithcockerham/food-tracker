@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Track Intake</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" href="/favicon-32.ico" sizes="32x32">
+  <link rel="icon" type="image/png" href="/favicon-16.ico" sizes="16x16">
+</head>
+<body>
+  <header>
+    <h1>Track Daily Intake</h1>
+    <div class="topbar-right">
+      <a href="index.html" style="color: #ffffff; text-decoration: none">Home &nbsp</a>
+      <a href="add.html" style="color: #ffffff; text-decoration: none">&nbsp Add &nbsp</a>
+      <a href="results.html" style="color: #ffffff; text-decoration: none">&nbsp Results &nbsp</a>
+      <a href="plan.html" style="color: #ffffff; text-decoration: none">&nbsp Day Planner &nbsp</a>
+      <a href="plan_bot.html" style="color: #ffffff; text-decoration: none">&nbsp Planning Assistant &nbsp</a>
+      <a href="reports.html" style="color: #ffffff; text-decoration: none">&nbsp Reporting</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Add / Edit Entry</h2>
+
+      <!-- hidden: which entry we are editing (empty = new) -->
+      <input type="hidden" id="editingEntryId">
+
+      <label>Date
+        <input type="date" id="entryDate">
+      </label>
+      <label>Time (optional)
+        <input type="time" id="entryTime">
+      </label>
+
+      <label>Type
+        <select id="entryType">
+          <option value="ingredient">Ingredient</option>
+          <option value="recipe">Recipe</option>
+        </select>
+      </label>
+
+      <label>Item
+        <select id="entryItem"></select>
+      </label>
+
+      <label>Quantity
+        <input type="number" id="entryQty" value="1">
+      </label>
+
+      <label>Unit
+        <input type="text" id="entryUnit" placeholder="serving">
+      </label>
+
+      <button id="btnAddEntry">Add Entry</button>
+      <button id="btnCancelEdit" class="hidden">Cancel Edit</button>
+      <div id="trackStatus" class="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>Entries for Selected Day</h2>
+      <div id="entriesList">
+        <!-- table will be injected here -->
+      </div>
+    </section>
+  </main>
+
+  <script>
+    async function fetchJson(url, options = {}) {
+      const res = await fetch(url, {
+        headers: { "Content-Type": "application/json" },
+        ...options
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} for ${url}\n${text.slice(0,300)}`);
+      }
+      return JSON.parse(text);
+    }
+
+    let ingredients = [];
+    let recipes = [];
+    let calendarEntries = [];
+
+    async function loadOptions() {
+      ingredients = await fetchJson("/api/ingredients");
+      ingredients.sort((a, b) => a.name.localeCompare(b.name));
+
+      recipes = await fetchJson("/api/recipes");
+      recipes.sort((a, b) => a.name.localeCompare(b.name));
+
+      refreshItemOptions();
+    }
+
+    function updateUnitFromSelection() {
+      const type = document.getElementById("entryType").value;
+      const itemId = document.getElementById("entryItem").value;
+      const unitInput = document.getElementById("entryUnit");
+
+      if (type === "ingredient") {
+        const ing = ingredients.find(i => i.ingredient_id === itemId);
+        if (ing) {
+          unitInput.value = ing.base_unit || "";
+          // uncomment this if you want to *force* correct units:
+          // unitInput.readOnly = true;
+        } else {
+          unitInput.value = "";
+          // unitInput.readOnly = false;
+        }
+      } else if (type === "recipe") {
+        unitInput.value = "serving";
+        // unitInput.readOnly = true; // optional
+      } else {
+        unitInput.value = "";
+        // unitInput.readOnly = false;
+      }
+    }
+    async function loadCalendar() {
+      calendarEntries = await fetchJson("/api/calendar");
+      renderEntriesForSelectedDate();
+    }
+
+    function refreshItemOptions() {
+      const type = document.getElementById("entryType").value;
+      const select = document.getElementById("entryItem");
+      select.innerHTML = "";
+
+      const list = type === "ingredient" ? ingredients : recipes;
+      list.forEach(item => {
+        const opt = document.createElement("option");
+        opt.value = type === "ingredient" ? item.ingredient_id : item.recipe_id;
+        opt.textContent = item.name;
+        select.appendChild(opt);
+      });
+      updateUnitFromSelection();
+    }
+
+    function getItemName(entry) {
+      if (entry.source_type === "ingredient") {
+        const ing = ingredients.find(i => i.ingredient_id === entry.source_id);
+        return ing ? ing.name : "(unknown ingredient)";
+      } else if (entry.source_type === "recipe") {
+        const rec = recipes.find(r => r.recipe_id === entry.source_id);
+        return rec ? rec.name : "(unknown recipe)";
+      }
+      return "(unknown)";
+    }
+
+    function renderEntriesForSelectedDate() {
+      const container = document.getElementById("entriesList");
+      const selectedDate = document.getElementById("entryDate").value;
+      container.innerHTML = "";
+
+      if (!selectedDate) {
+        container.textContent = "Select a date to view entries.";
+        return;
+      }
+
+      const todays = calendarEntries.filter(e => e.date === selectedDate);
+
+      if (todays.length === 0) {
+        container.textContent = "No entries for this day yet.";
+        return;
+      }
+
+      const table = document.createElement("table");
+      table.className = "data-table";
+
+      const thead = document.createElement("thead");
+      thead.innerHTML = `
+        <tr>
+          <th>Time</th>
+          <th>Type</th>
+          <th>Item</th>
+          <th>Qty</th>
+          <th>Unit</th>
+          <th>Calories</th>
+          <th>Actions</th>
+        </tr>
+      `;
+      table.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+
+      todays.forEach(entry => {
+        const tr = document.createElement("tr");
+
+        const timeCell = document.createElement("td");
+        timeCell.textContent = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+        tr.appendChild(timeCell);
+
+        const typeCell = document.createElement("td");
+        typeCell.textContent = entry.source_type;
+        tr.appendChild(typeCell);
+
+        const itemCell = document.createElement("td");
+        itemCell.textContent = getItemName(entry);
+        tr.appendChild(itemCell);
+
+        const qtyCell = document.createElement("td");
+        qtyCell.textContent = entry.qty;
+        tr.appendChild(qtyCell);
+
+        const unitCell = document.createElement("td");
+        unitCell.textContent = entry.unit || "";
+        tr.appendChild(unitCell);
+
+        const calCell = document.createElement("td");
+        calCell.textContent = entry.calories ?? "";
+        tr.appendChild(calCell);
+
+        const actionsCell = document.createElement("td");
+        const editBtn = document.createElement("button");
+        editBtn.textContent = "Edit";
+        editBtn.onclick = () => startEditEntry(entry.entry_id);
+
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "Delete";
+        delBtn.style.marginLeft = "4px";
+        delBtn.onclick = () => deleteEntry(entry.entry_id);
+
+        actionsCell.appendChild(editBtn);
+        actionsCell.appendChild(delBtn);
+        tr.appendChild(actionsCell);
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      container.appendChild(table);
+    }
+
+    function startEditEntry(entryId) {
+      const entry = calendarEntries.find(e => e.entry_id === entryId);
+      if (!entry) return;
+
+      const entryDate = document.getElementById("entryDate");
+      const entryTime = document.getElementById("entryTime");
+      const entryType = document.getElementById("entryType");
+      const entryItem = document.getElementById("entryItem");
+      const entryQty = document.getElementById("entryQty");
+      const entryUnit = document.getElementById("entryUnit");
+      const editingId = document.getElementById("editingEntryId");
+      const btnAdd = document.getElementById("btnAddEntry");
+      const btnCancel = document.getElementById("btnCancelEdit");
+
+      editingId.value = entry.entry_id;
+      entryDate.value = entry.date || "";
+
+      if (entry.timestamp) {
+        const dt = new Date(entry.timestamp);
+        const hh = String(dt.getHours()).padStart(2, "0");
+        const mm = String(dt.getMinutes()).padStart(2, "0");
+        entryTime.value = `${hh}:${mm}`;
+      } else {
+        entryTime.value = "";
+      }
+
+      entryType.value = entry.source_type;
+      refreshItemOptions();
+      entryItem.value = entry.source_id;
+
+      entryQty.value = entry.qty;
+      entryUnit.value = entry.unit || "";
+
+      btnAdd.textContent = "Save Changes";
+      btnCancel.classList.remove("hidden");
+      document.getElementById("trackStatus").textContent = "Editing entry...";
+      renderEntriesForSelectedDate(); // still show table
+    }
+
+    function resetEditState() {
+      document.getElementById("editingEntryId").value = "";
+      document.getElementById("btnAddEntry").textContent = "Add Entry";
+      document.getElementById("btnCancelEdit").classList.add("hidden");
+      document.getElementById("trackStatus").textContent = "";
+    }
+
+    async function deleteEntry(entryId) {
+      await fetchJson(`/api/calendar/${entryId}`, { method: "DELETE" });
+      // reload calendar and re-render
+      await loadCalendar();
+      renderEntriesForSelectedDate();
+    }
+
+    document.getElementById("btnCancelEdit").onclick = () => {
+      resetEditState();
+    };
+
+    document.getElementById("entryType").onchange = () => {
+      refreshItemOptions();
+    };
+
+    document.getElementById("entryItem").onchange = () => {
+      updateUnitFromSelection();
+    };
+
+    document.getElementById("entryDate").onchange = () => {
+      renderEntriesForSelectedDate();
+    };
+
+    document.getElementById("btnAddEntry").onclick = async () => {
+      const date = document.getElementById("entryDate").value;
+      const time = document.getElementById("entryTime").value;
+      const type = document.getElementById("entryType").value;
+      const itemId = document.getElementById("entryItem").value;
+      const qty = parseFloat(document.getElementById("entryQty").value || "1");
+      const unit = document.getElementById("entryUnit").value || "serving";
+      const editingId = document.getElementById("editingEntryId").value;
+
+      if (!date || !itemId) return;
+
+      let timestamp = null;
+      if (time) timestamp = `${date}T${time}:00`;
+
+      const payload = {
+        date,
+        timestamp,
+        source_type: type,
+        source_id: itemId,
+        qty,
+        unit
+      };
+
+      let res;
+      if (editingId) {
+        // update existing
+        res = await fetchJson(`/api/calendar/${editingId}`, {
+          method: "PUT",
+          body: JSON.stringify(payload)
+        });
+      } else {
+        // new entry
+        res = await fetchJson("/api/calendar", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+      }
+
+      document.getElementById("trackStatus").textContent =
+        (editingId ? "Updated entry: " : "Added entry: ") + res.entry_id;
+
+      resetEditState();
+      await loadCalendar();
+      renderEntriesForSelectedDate();
+    };
+
+    // init
+    (async function init() {
+      // default date = today
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const dd = String(today.getDate()).padStart(2, "0");
+      document.getElementById("entryDate").value = `${yyyy}-${mm}-${dd}`;
+
+      await loadOptions();
+      await loadCalendar();
+      updateUnitFromSelection();
+      renderEntriesForSelectedDate();
+    })();
+  </script>
+</body>
+</html>

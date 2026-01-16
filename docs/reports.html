@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Reports</title>
+
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" href="/favicon-32.ico" sizes="32x32">
+  <link rel="icon" type="image/png" href="/favicon-16.ico" sizes="16x16">
+
+  <!-- Chart.js simple, good enough -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+  <header>
+    <h1>Reports</h1>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="add.html">Add</a>
+      <a href="track.html">Track</a>
+      <a href="results.html">Results</a>
+      <a href="plan.html">Day Planner</a>
+      <a href="plan_bot.html">Planning Assistant</a>
+    </nav>
+  </header>
+
+  <div class="container">
+
+    <section class="card">
+      <div class="report-controls-row">
+        <label>
+          Preset
+          <select id="preset">
+            <option value="7d">Last 7 days</option>
+            <option value="30d" selected>Last 30 days</option>
+            <option value="90d">Last 90 days</option>
+            <option value="180d">Last 180 days</option>
+            <option value="365d">Last 365 days</option>
+            <option value="ytd">Year-to-date</option>
+            <option value="all">All time</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+
+        <label>
+          Start
+          <input id="startDate" type="date">
+        </label>
+
+        <label>
+          End
+          <input id="endDate" type="date">
+        </label>
+
+        <label title="Daily rolling average window (days)">
+          Rolling Avg (days)
+          <input id="rollDays" type="number" min="1" max="60" value="7">
+        </label>
+
+        <div>
+          <button id="btnRun">Run Report</button>
+          <button id="btnExport" type="button">Export JSON</button>
+          <span class="status inline" id="status">Idle</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div style="display:flex; justify-content:space-between; gap:12px; align-items:baseline; flex-wrap:wrap">
+        <h2 style="margin:0">Totals + %Target (Selected Range)</h2>
+        <div class="muted" id="rangeLabel"></div>
+      </div>
+      <div class="table-wrap" style="margin-top:10px">
+        <table class="data-table" id="totalsTable">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Total</th>
+              <th>Avg / Day</th>
+              <th>Target</th>
+              <th>% Target</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="two-column">
+      <section class="card">
+        <div style="display:flex; justify-content:space-between; gap:12px; align-items:baseline; flex-wrap:wrap">
+          <h2 style="margin:0">Calories from Macros (Range Total)</h2>
+          <div class="muted">4-4-9 (carb/protein/fat)</div>
+        </div>
+        <div style="margin-top:10px">
+          <canvas id="macroPie"></canvas>
+          <div class="mini-table" id="macroLegend"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div style="display:flex; justify-content:space-between; gap:12px; align-items:baseline; flex-wrap:wrap">
+          <h2 style="margin:0">Average Hourly Intake</h2>
+          <div class="muted">(0–23), averaged across days</div>
+        </div>
+        <div style="margin-top:10px">
+          <label style="max-width:260px">
+            Hourly Metric
+            <select id="hourlyMetric"></select>
+          </label>
+          <canvas id="hourlyLine"></canvas>
+          <div id="hourlyGuidance" class="metric-guidance" aria-live="polite"></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <div style="display:flex; justify-content:space-between; gap:12px; align-items:baseline; flex-wrap:wrap">
+        <h2 style="margin:0">Daily Trend + Rolling Average</h2>
+        <div class="muted">Pick a metric, then stare at your patterns like a detective with spreadsheets</div>
+      </div>
+      <div style="margin-top:10px">
+        <label style="max-width:260px">
+          Trend Metric
+          <select id="trendMetric"></select>
+        </label>
+        <canvas id="dailyTrend"></canvas>
+      </div>
+    </section>
+
+    <section class="card">
+      <div style="display:flex; justify-content:space-between; gap:12px; align-items:baseline; flex-wrap:wrap">
+        <h2 style="margin:0">Monthly / Quarterly / Annual Aggregates</h2>
+        <div class="muted">Same metric, different time buckets. Because humans love reinventing time.</div>
+      </div>
+      <div class="report-agg-grid" style="margin-top:10px">
+        <div class="report-agg-card">
+          <div class="report-agg-title">Monthly</div>
+          <canvas id="monthlyBar"></canvas>
+        </div>
+        <div class="report-agg-card">
+          <div class="report-agg-title">Quarterly</div>
+          <canvas id="quarterlyBar"></canvas>
+        </div>
+        <div class="report-agg-card">
+          <div class="report-agg-title">Annual</div>
+          <canvas id="annualBar"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div style="display:flex; justify-content:space-between; gap:12px; align-items:baseline; flex-wrap:wrap">
+        <h2 style="margin:0">Raw Stats Dump</h2>
+        <div class="muted">Counts, missingness, and other reality checks</div>
+      </div>
+      <div style="margin-top:10px">
+        <pre class="pre" id="statsDump">No data yet.</pre>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="/static/reports.js"></script>
+</body>
+</html>
