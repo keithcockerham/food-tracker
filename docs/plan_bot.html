@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Day Planner Sandbox</title>
+  <title>Day Planner Sandbox (Temp)</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="icon" type="image/png" href="/favicon-32.ico" sizes="32x32">
@@ -234,11 +234,14 @@
           <button class="btn" id="btnMealGenie">Make 3-Day Menu</button>
           <span id="mealGenieStatus" class="genie-status" aria-live="polite"></span>
         </div>
-
         <div id="genieOut" class="genie-out hidden">
           <div id="genieMeta" class="chiprow"></div>
-          <h3 style="margin:6px 0 4px;">3-Day Menu</h3>
+          <h3 style="margin:10px 0 4px;">Menu</h3>
           <div id="mealGenieMenu"></div>
+
+          <h3 style="margin:10px 0 4px;">Macro Summary</h3>
+          <div id="mealGenieMacros"></div>
+
           <h3 style="margin:10px 0 4px;">Shopping List</h3>
           <div id="mealGenieShopping"></div>
         </div>
@@ -257,6 +260,33 @@
       el.innerHTML = formatChatText(raw);
     };
     
+    function prettifyMenuText(text){
+      if(!text) return "";
+
+      return text
+        .split("\n")
+        .map(line => {
+          const m = line.match(/^(\s*-?\s*(Breakfast|Lunch|Dinner|Snack|Snacks)[^:]*:\s*)(.+)$/i);
+          if(!m) return line;
+
+          const prefix = m[1].trimEnd();
+          const rest = m[3].trim();
+
+          if(!rest.includes(",")) return line;
+
+          const items = rest
+            .split(",")
+            .map(s => s.trim())
+            .filter(Boolean);
+
+          return [
+            prefix,
+            ...items.map(i => "  - " + i)
+          ].join("\n");
+        })
+        .join("\n\n");
+    }
+
     function updateTargetsUsedText() {
       const el = document.getElementById("targetsUsedText");
       if (!el) return;
@@ -1086,8 +1116,10 @@
       out.classList.add("hidden");
       if (meta) meta.innerHTML = "";
       const menuEl = document.getElementById("mealGenieMenu");
+      const macrosEl = document.getElementById("mealGenieMacros");
       const shopEl = document.getElementById("mealGenieShopping");
       if (menuEl) menuEl.innerHTML = "";
+      if (macrosEl) macrosEl.innerHTML = "";
       if (shopEl) shopEl.innerHTML = "";
 
       setMealGenieLoading(true);
@@ -1104,9 +1136,6 @@
         const rawMenu = (res?.menu_text || res?.text || res?.output || "").trim();
         const rawShop = (res?.shopping_list_text || "").trim();
 
-        const combined = rawShop ? (rawMenu + "\n\nShopping List\n" + rawShop) : rawMenu;
-        const parsed = parseMealGenieText(combined);
-
         if (meta) {
           const chips = [];
           if (req) chips.push(`<span class="chip">Reqs: ${escapeHtml(req)}</span>`);
@@ -1114,7 +1143,7 @@
           meta.innerHTML = chips.join("");
         }
 
-        renderMealGenieResult(parsed, combined);
+        renderMealGenieResult(rawMenu, rawShop, res?.structured || null);
         out.classList.remove("hidden");
 
         if (addBtn && res?.structured?.day1_items && Array.isArray(res.structured.day1_items) && res.structured.day1_items.length) {
@@ -1123,11 +1152,10 @@
         }
       } catch (e) {
         out.classList.remove("hidden");
-        if (menuEl) {
-          menuEl.innerHTML = `<pre class="mono">Meal Genie error: ${escapeHtml(String(e))}</pre>`;
-        } else {
-          out.textContent = "Meal Genie error: " + String(e);
-        }
+        if (menuEl) menuEl.innerHTML = `<pre class="mono">Meal Genie error: ${escapeHtml(String(e))}</pre>`;
+        if (shopEl) shopEl.innerHTML = "";
+        if (macrosEl) macrosEl.innerHTML = "";
+        if (!menuEl) out.textContent = "Meal Genie error: " + String(e);
       } finally {
         setMealGenieLoading(false);
       }
@@ -1221,9 +1249,6 @@ function escapeHtml(s){
       el.innerHTML = formatChatText(raw);
     };
 
-
-    // Helper - use the same bullet-aware formatter as Assistant chat.
-
       
       const paras = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
       return paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("");
@@ -1266,19 +1291,27 @@ function parseMealGenieText(raw){
   const dayBlocks = menuText.split(/(?=Day\s*\d+)/i).map(s=>s.trim()).filter(Boolean);
 
   dayBlocks.forEach(block=>{
-    const day = { breakfast:"", lunch:"", dinner:"", snacks:[] };
+    const dayMatch = block.match(/Day\s*(\d+)/i);
+    const dayNum = dayMatch ? dayMatch[1] : "";
 
+    const day = {
+      day: dayNum,
+      breakfast: "",
+      lunch: "",
+      dinner: "",
+      snacks: []
+    };
     block.split(/\n/).forEach(line=>{
       const l=line.trim();
       if(/^breakfast[:\-]/i.test(l)) day.breakfast = l.split(/[:\-]/)[1]?.trim()||"";
       else if(/^lunch[:\-]/i.test(l)) day.lunch = l.split(/[:\-]/)[1]?.trim()||"";
       else if(/^dinner[:\-]/i.test(l)) day.dinner = l.split(/[:\-]/)[1]?.trim()||"";
       else if(/^snack/i.test(l)) {
-        const v=l.split(/[:\-]/)[1];
-        if(v) day.snacks.push(v.trim());
+        const v = l.replace(/^snack\s*\d*[:\-]?\s*/i, "").trim();
+        if(v) day.snacks.push(v);
       }
-      else if(l.startsWith("-") && day.snacks.length){
-        day.snacks.push(l.replace(/^-+/,"").trim());
+      else if(l.startsWith("-")) {
+        day.snacks.push(l.replace(/^-+/, "").trim());
       }
     });
 
@@ -1288,48 +1321,77 @@ function parseMealGenieText(raw){
   return out;
 }
 
+function _fmtNum(v, digits=0){
+  const n = Number(v);
+  if(!Number.isFinite(n)) return "0";
+  return (digits === 0) ? Math.round(n).toLocaleString() : n.toFixed(digits);
+}
 
-function renderMealGenieResult(parsed, rawText){
+function _fmtMacros(m){
+  const mm = m || {};
+  return `${_fmtNum(mm.calories_kcal,0)} kcal, ` +
+         `${_fmtNum(mm.protein_g,0)}g Protein / ${_fmtNum(mm.carbs_g,0)}g Carbs / ${_fmtNum(mm.fat_g,0)}g Fat, ` +
+         `Fiber ${_fmtNum(mm.fiber_g,0)}g, Sugar ${_fmtNum(mm.sugar_g,0)}g, Sodium ${_fmtNum(mm.sodium_mg,0)}mg`;
+}
+
+function renderMealGenieMacros(structured){
+  const el = document.getElementById("mealGenieMacros");
+  if(!el) return;
+
+  const days = structured?.days;
+  if(!Array.isArray(days) || !days.length){
+    el.innerHTML = `<div class="muted">(no macro breakdown returned)</div>`;
+    return;
+  }
+
+  const mealOrder = [
+    ["breakfast","Breakfast"],
+    ["lunch","Lunch"],
+    ["dinner","Dinner"],
+    ["snack1","Snack 1"],
+    ["snack2","Snack 2"],
+  ];
+
+  el.innerHTML = days.map(d => {
+    const dayNum = d?.day ?? "";
+    const totals = d?.day_totals || d?.totals || null;
+    const meals = d?.meals || {};
+
+    const mealLines = mealOrder.map(([k, label]) => {
+      const m = meals?.[k];
+      if(!m) return "";
+      const name = m?.name ? ` ${escapeHtml(String(m.name))}` : "";
+      const macros = m?.macros ? _fmtMacros(m.macros) : "";
+      if(!macros) return "";
+      return `<div class="kv"><strong>${label}:</strong>${name}<br><span class="muted">${escapeHtml(macros)}</span></div>`;
+    }).filter(Boolean).join("");
+
+    const totalsLine = totals ? `<div class="kv"><strong>Day ${escapeHtml(String(dayNum))} total:</strong><br><span class="muted">${escapeHtml(_fmtMacros(totals))}</span></div>` : "";
+
+    return `
+      <div class="day-card">
+        <h4>Day ${escapeHtml(String(dayNum))}</h4>
+        ${totalsLine}
+        ${mealLines || `<div class="muted">(no meals/macros parsed)</div>`}
+      </div>
+    `;
+  }).join("");
+}
+
+function renderMealGenieResult(rawMenu, rawShop, structured){
   const menuEl = document.getElementById("mealGenieMenu");
   const shopEl = document.getElementById("mealGenieShopping");
   if(!menuEl || !shopEl) return;
 
-  if(parsed && parsed.days && parsed.days.length){
-    menuEl.innerHTML = parsed.days.map(d=>{
-      const snacks = (d.snacks && d.snacks.length)
-        ? `<ul class="bullets">${d.snacks.map(s=>`<li>${escapeHtml(s)}</li>`).join("")}</ul>`
-        : `<div class="muted">(no snacks parsed)</div>`;
-      return `
-        <div class="day-card">
-          <h4>Day ${d.day}</h4>
-          <div class="kv"><b>Breakfast:</b> ${escapeHtml(d.breakfast || "")}</div>
-          <div class="kv"><b>Lunch:</b> ${escapeHtml(d.lunch || "")}</div>
-          <div class="kv"><b>Dinner:</b> ${escapeHtml(d.dinner || "")}</div>
-          <div class="kv"><b>Snacks:</b>${snacks}</div>
-        </div>
-      `;
-    }).join("");
-  } else {
-    menuEl.innerHTML = `<pre class="mono">${escapeHtml(rawText || "")}</pre>`;
-  }
+  const prettyMenu = prettifyMenuText(rawMenu || "");
+  menuEl.style.display = "block";
+  menuEl.innerHTML = `<pre class="mono">${escapeHtml(prettyMenu || "")}</pre>`;
 
-  const cats = parsed && parsed.shopping ? Object.keys(parsed.shopping) : [];
-  if(cats.length){
-    shopEl.innerHTML = cats.map(cat=>{
-      const items = parsed.shopping[cat] || [];
-      return `
-        <div class="shop-card">
-          <h4>${escapeHtml(cat)}</h4>
-          <ul class="bullets">
-            ${items.map(it=>`<li>${escapeHtml(it)}</li>`).join("")}
-          </ul>
-        </div>
-      `;
-    }).join("");
-  } else {
-    shopEl.innerHTML = `<pre class="mono">${escapeHtml(rawText || "")}</pre>`;
-  }
+  renderMealGenieMacros(structured);
+
+  shopEl.innerHTML = `<pre class="mono">${escapeHtml(rawShop || "")}</pre>`;
 }
+
 
 </script>
 </body>

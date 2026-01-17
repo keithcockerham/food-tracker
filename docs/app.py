@@ -393,97 +393,100 @@ def api_meal_genie():
     Output:
       - menu_text: string
       - shopping_list_text: string
-      - structured: optional dict (best-effort JSON extraction)
+      - structured: dict (best-effort JSON extraction)
+
+    TEMP VERSION NOTE:
+      This version requires cooking instructions for breakfast/lunch/dinner under the ingredient list.
     """
     data = request.get_json(force=True) or {}
     goal = _safe_json(data.get("goal") or {})
     reqs = (data.get("requirements") or "").strip()
 
-    system = (
-        "You are Meal Genie.\n"
-        "Create a RANDOM 3-day menu with breakfast, lunch, dinner, and 2 snacks per day.\n"
-        "Aim to match the daily goals given. Respect positive requirements.\n"
-        "Keep meals realistic for a normal household. Repeats are allowed.\n"
-        "\n"
-        "CRITICAL OUTPUT REQUIREMENTS:\n"
-        "1) Every meal and snack MUST be a recipe-style suggestion with ingredient quantities.\n"
-        "   - Use household units when possible (cups, tbsp, tsp, oz, lb, g, ml, each).\n"
-        "   - Include amounts per recipe (per serving) AND note servings if it makes sense.\n"
-        "   - Example format: \"Greek yogurt bowl (1 serving): 1 cup nonfat Greek yogurt, 1/2 cup berries, 1 tbsp chia\".\n"
-        "2) The shopping list MUST be consolidated totals across ALL 3 days.\n"
-        "   - Group by category (Produce, Protein/Dairy, Pantry/Grains, Canned/Jarred, Spices/Other, Beverages).\n"
-        "   - Each line MUST include a total amount (e.g., \"Chicken breast: 2 lb\", \"Greek yogurt: 4 cups\").\n"
-        "   - If totals are ambiguous, choose a reasonable total and keep units consistent.\n"
-        "\n"
-        "Return BOTH:\n"
-        "1) A readable menu.\n"
-        "2) A consolidated shopping list grouped by category with TOTAL amounts.\n"
-        "\n"
-        "Also include a single JSON object that contains keys: menu_text, shopping_list_text, structured.\n"
-        "The JSON must be valid and parseable. Do NOT wrap JSON in markdown fences.\n"
-        "\n"
-        "JSON STRUCTURE REQUIREMENTS:\n"
-        "structured must include:\n"
-        "- days: [\n"
-        "    { day: 1, meals: {\n"
-        "        breakfast: { name: str, servings: number, ingredients: [ { item: str, amount: number, unit: str } ] },\n"
-        "        lunch:     { ...same... },\n"
-        "        dinner:    { ...same... },\n"
-        "        snack1:    { ...same... },\n"
-        "        snack2:    { ...same... }\n"
-        "    }}\n"
-        "  ]\n"
-        "- shopping_list: {\n"
-        "    category_name: [ { item: str, total_amount: number, unit: str, notes: str } ]\n"
-        "  }\n"
-        "\n"
-        "Do not include exact macro math unless explicitly provided.\n"
-        "Do not output anything except the menu, shopping list, and the final JSON object.\n"
+    if client is None:
+        return jsonify({"error": "LLM is disabled or not configured"}), 503
 
+    system = (
+        "You are Meal Genie. You generate a RANDOM 3-day menu and a consolidated shopping list."
+        "Aim to match the daily goals. Respect positive requirements."
+        "Keep meals realistic for a normal household. Repeats are allowed."
+        "OUTPUT MUST BE ONLY ONE VALID JSON OBJECT. No extra text, no markdown."
+        "JSON KEYS REQUIRED: menu_text, shopping_list_text, structured"
+        "MENU_TEXT FORMAT REQUIREMENTS (human-readable):"
+
+        "- 3 days labeled Day 1, Day 2, Day 3"
+        "- Each day includes Breakfast, Lunch, Dinner, Snack 1, Snack 2"
+        "- For Breakfast/Lunch/Dinner: list ingredients with quantities AND then include cooking instructions."
+        "  Example:"
+        "  Breakfast: Egg White Omelet (1 serving):"
+        "    - 4 egg whites"
+        "    - 1 cup spinach"
+        "    Instructions: Heat pan, saute spinach, add egg whites, cook until set."
+        "- Snacks may be no-cook; include prep instructions if any (optional)."
+
+        "SHOPPING_LIST_TEXT REQUIREMENTS:"
+        "- Consolidated totals across ALL 3 days"
+        "- Group by category: Produce, Protein/Dairy, Pantry/Grains, Canned/Jarred, Spices/Other, Beverages"
+        "- Each line includes a total amount and unit"
+
+        "STRUCTURED JSON REQUIREMENTS:"
+        "structured must include:"
+        "- days: ["
+        "    { day: 1, day_totals: macros, meals: {"
+        "        breakfast: { name, servings, ingredients:[{item, amount, unit}], instructions, macros },"
+        "        lunch:     { ... },"
+        "        dinner:    { ... },"
+        "        snack1:    { name, servings, ingredients:[...], instructions(optional), macros },"
+        "        snack2:    { ... }"
+        "    }}" 
+
+        ""
+        "  ]"
+        "- shopping_list: { category_name: [ { item, total_amount, unit, notes } ] }"
+        "MACRO REQUIREMENTS (LLM MUST PROVIDE):"
+        "- Provide macro estimates for EACH MEAL and DAY TOTALS."
+        "- Use exact keys: calories_kcal, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg"
+        "- Estimates can be approximate but must be internally consistent (day_totals ~= sum of meals)."
+        "- Do not return zeros."
     )
 
     payload = {
         "goal": goal,
         "positive_requirements": reqs,
-        "output_contract": {
-            "menu_text": "string",
-            "shopping_list_text": "string",
-            "structured": {
-                "days": [
-                    {
-                        "day": 1,
-                        "breakfast": "string",
-                        "lunch": "string",
-                        "dinner": "string",
-                        "snacks": ["string", "string"],
-                    }
-                ],
-                "shopping_list": [
-                    {"category": "Produce", "items": ["string", "string"]}
-                ],
-            },
-        },
+        "macro_keys": [
+            "calories_kcal","protein_g","carbs_g","fat_g","fiber_g","sugar_g","sodium_mg"
+        ],
+        "categories": ["Produce","Protein/Dairy","Pantry/Grains","Canned/Jarred","Spices/Other","Beverages"],
+        "notes": "Return only JSON with keys menu_text, shopping_list_text, structured. Breakfast/lunch/dinner must include instructions under ingredients in menu_text and in structured.meals.<meal>.instructions."
     }
 
     raw = _llm_chat(system, json.dumps(payload, indent=2), model="gpt-4.1", temperature=0.9)
 
+    menu_text = ""
+    shopping_list_text = ""
     structured = None
-    menu_text = raw
-    shopping_list_text = raw
 
+    obj = None
     try:
-        start = raw.index("{")
-        end = raw.rindex("}") + 1
-        obj = json.loads(raw[start:end])
-        if isinstance(obj, dict):
-            if "menu_text" in obj or "shopping_list_text" in obj or "structured" in obj:
-                menu_text = obj.get("menu_text", menu_text)
-                shopping_list_text = obj.get("shopping_list_text", shopping_list_text)
-                structured = obj.get("structured", None)
-            else:
-                structured = obj
+        obj = json.loads(raw)
     except Exception:
-        structured = None
+        
+        try:
+            start = raw.index("{")
+            end = raw.rindex("}") + 1
+            obj = json.loads(raw[start:end])
+        except Exception:
+            obj = None
+
+    if isinstance(obj, dict):
+        menu_text = (obj.get("menu_text") or "").strip()
+        shopping_list_text = (obj.get("shopping_list_text") or "").strip()
+        structured = obj.get("structured", None)
+
+    # if JSON failed, at least return the raw text in menu_text
+    if not menu_text:
+        menu_text = (raw or "").strip()
+    if not shopping_list_text:
+        shopping_list_text = ""
 
     return jsonify({
         "menu_text": menu_text,
