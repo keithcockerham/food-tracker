@@ -202,6 +202,10 @@
         <h3>Substitution Ideas</h3>
         <div id="substitutionSuggestions" style="font-size:13px;">
         </div>
+        <div class="assistant-actions">
+          <button class="btn small" id="btnGenHelpers">Regenerate helper suggestions</button>
+          <button class="btn small" id="btnGenSubs">Regenerate substitution ideas</button>
+        </div>
       </div>
     </section>
   
@@ -214,11 +218,7 @@
           <input id="assistantInput" type="text" placeholder="e.g., How can I raise protein without adding much sodium?" />
           <button class="btn" id="btnAssistantSend">Send</button>
         </div>
-        <div class="assistant-actions">
-          <button class="btn small" id="btnGenHelpers">Regenerate helper suggestions</button>
-          <button class="btn small" id="btnGenSubs">Regenerate substitution ideas</button>
-        </div>
-        <div class="notice small">Requires backend endpoints: <code>/api/llm</code> and <code>/api/meal_genie</code>.</div>
+        
       </div>
     </section>
 
@@ -233,7 +233,6 @@
         <div class="row">
           <button class="btn" id="btnMealGenie">Make 3-Day Menu</button>
           <span id="mealGenieStatus" class="genie-status" aria-live="polite"></span>
-          <button class="btn ghost" id="btnMealGenieAddToPlan" disabled title="Adds Day 1 items into your current plan (if your backend returns ingredient-level items).">Add Day 1 to plan</button>
         </div>
 
         <div id="genieOut" class="genie-out hidden">
