@@ -207,7 +207,7 @@
   
     <section class="card">
       <h2>Assistant</h2>
-      <p class="muted">Ask for smarter suggestions/substitutions based on your current day plan. (Key stays server-side.)</p>
+      <p class="muted">Ask for smarter suggestions/substitutions based on your current day plan.</p>
       <div class="assistant">
         <div id="assistantLog" class="assistant-log" aria-live="polite"></div>
         <div class="assistant-controls">
@@ -215,8 +215,8 @@
           <button class="btn" id="btnAssistantSend">Send</button>
         </div>
         <div class="assistant-actions">
-          <button class="btn small" id="btnGenHelpers">Generate helper suggestions</button>
-          <button class="btn small" id="btnGenSubs">Generate substitution ideas</button>
+          <button class="btn small" id="btnGenHelpers">Regenerate helper suggestions</button>
+          <button class="btn small" id="btnGenSubs">Regenerate substitution ideas</button>
         </div>
         <div class="notice small">Requires backend endpoints: <code>/api/llm</code> and <code>/api/meal_genie</code>.</div>
       </div>
@@ -224,10 +224,10 @@
 
     <section class="card">
       <h2>Meal Genie</h2>
-      <p class="muted">Generate a random 3-day menu (breakfast, lunch, dinner, 2 snacks) that aims to meet your daily targets and any positive requirements you type in.</p>
+      <p class="muted">Generate a random 3-day menu (breakfast, lunch, dinner, 2 snacks) that aims to meet your daily targets and any requirements you type in.</p>
 
       <div class="genie">
-        <label class="lbl">Positive requirements (optional)</label>
+        <label class="lbl">Requirements (optional)</label>
         <textarea id="genieReq" rows="3" placeholder="Examples: high protein, low sodium, lots of fiber, no tofu, budget-friendly, minimal cooking, repeats allowed"></textarea>
 
         <div class="row">
