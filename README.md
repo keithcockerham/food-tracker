@@ -1,5 +1,5 @@
 # Food Tracker
-**Parsing of the Meal Genie is jank...I'm working on it**
+**Parsing of the Meal Genie is less jank and includes cooking instructions now**
 
 **This is a super simple and made to be run locally. I initially made it bespoke to my environment, but found it useful so I decided to remove hard-coding and post; however, it is still not a "baked" project so it may require tweaking**
 
@@ -99,4 +99,5 @@ EXAMPLE
 cd /Projects/food-tracker/docs
 python app.py
 ```
+
 
